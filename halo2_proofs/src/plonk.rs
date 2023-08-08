@@ -25,6 +25,7 @@ mod vanishing;
 
 mod prover;
 mod verifier;
+mod minimal_verifier;
 
 pub use assigned::*;
 pub use circuit::*;
@@ -32,6 +33,7 @@ pub use error::*;
 pub use keygen::*;
 pub use prover::*;
 pub use verifier::*;
+pub use minimal_verifier::*;
 
 use std::io;
 

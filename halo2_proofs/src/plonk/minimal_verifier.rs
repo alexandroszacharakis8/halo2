@@ -1,5 +1,4 @@
 use ff::Field;
-use group::Curve;
 use std::iter;
 
 use super::{
@@ -8,7 +7,7 @@ use super::{
 };
 use crate::arithmetic::CurveAffine;
 use crate::poly::{
-    commitment::{Blind, Guard, Params, MSM},
+    commitment::{Guard, Params, MSM},
     multiopen::{self, VerifierQuery},
 };
 use crate::transcript::{read_n_points, read_n_scalars, EncodedChallenge, TranscriptRead};
@@ -69,46 +68,13 @@ pub fn minimal_verify_proof<
     params: &'params Params<C>,
     vk: &VerifyingKey<C>,
     strategy: V,
-    instances: &[&[&[C::Scalar]]],
+    _instances: &[&[&[C::Scalar]]],
     transcript: &mut T,
 ) -> Result<V::Output, Error> {
-    // Check that instances matches the expected number of instance columns
-    for instances in instances.iter() {
-        if instances.len() != vk.cs.num_instance_columns {
-            return Err(Error::InvalidInstances);
-        }
-    }
-
-    let instance_commitments = instances
-        .iter()
-        .map(|instance| {
-            instance
-                .iter()
-                .map(|instance| {
-                    if instance.len() > params.n as usize - (vk.cs.blinding_factors() + 1) {
-                        return Err(Error::InstanceTooLarge);
-                    }
-                    let mut poly = instance.to_vec();
-                    poly.resize(params.n as usize, C::Scalar::ZERO);
-                    let poly = vk.domain.lagrange_from_vec(poly);
-
-                    Ok(params.commit_lagrange(&poly, Blind::default()).to_affine())
-                })
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let num_proofs = instance_commitments.len();
+    let num_proofs = 1;
 
     // Hash verification key into transcript
     vk.hash_into(transcript)?;
-
-    for instance_commitments in instance_commitments.iter() {
-        // Hash the instance (external) commitments into the transcript
-        for commitment in instance_commitments {
-            transcript.common_point(*commitment)?
-        }
-    }
 
     let advice_commitments = (0..num_proofs)
         .map(|_| -> Result<Vec<_>, _> {
@@ -118,18 +84,8 @@ pub fn minimal_verify_proof<
         .collect::<Result<Vec<_>, _>>()?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: ChallengeTheta<_> = transcript.squeeze_challenge_scalar();
-
-    let lookups_permuted = (0..num_proofs)
-        .map(|_| -> Result<Vec<_>, _> {
-            // Hash each lookup permuted commitment
-            vk.cs
-                .lookups
-                .iter()
-                .map(|argument| argument.read_permuted_commitments(transcript))
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    // Even if we don't have lookups, we need to keep this in order to be consistent with the transcript
+    let _theta: ChallengeTheta<_> = transcript.squeeze_challenge_scalar();
 
     // Sample beta challenge
     let beta: ChallengeBeta<_> = transcript.squeeze_challenge_scalar();
@@ -141,17 +97,6 @@ pub fn minimal_verify_proof<
         .map(|_| {
             // Hash each permutation product commitment
             vk.cs.permutation.read_product_commitments(vk, transcript)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let lookups_committed = lookups_permuted
-        .into_iter()
-        .map(|lookups| {
-            // Hash each lookup product commitment
-            lookups
-                .into_iter()
-                .map(|lookup| lookup.read_product_commitment(transcript))
-                .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -184,16 +129,6 @@ pub fn minimal_verify_proof<
         .map(|permutation| permutation.evaluate(transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups_evaluated = lookups_committed
-        .into_iter()
-        .map(|lookups| -> Result<Vec<_>, _> {
-            lookups
-                .into_iter()
-                .map(|lookup| lookup.evaluate(transcript))
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
     // This check ensures the circuit is satisfied so long as the polynomial
     // commitments open to the correct values.
     let vanishing = {
@@ -216,8 +151,7 @@ pub fn minimal_verify_proof<
             .iter()
             .zip(instance_evals.iter())
             .zip(permutations_evaluated.iter())
-            .zip(lookups_evaluated.iter())
-            .flat_map(|(((advice_evals, instance_evals), permutation), lookups)| {
+            .flat_map(|((advice_evals, instance_evals), permutation)| {
                 let fixed_evals = &fixed_evals;
                 std::iter::empty()
                     // Evaluate the circuit using the custom gates provided
@@ -250,56 +184,22 @@ pub fn minimal_verify_proof<
                         gamma,
                         x,
                     ))
-                    .chain(
-                        lookups
-                            .iter()
-                            .zip(vk.cs.lookups.iter())
-                            .flat_map(move |(p, argument)| {
-                                p.expressions(
-                                    l_0,
-                                    l_last,
-                                    l_blind,
-                                    argument,
-                                    theta,
-                                    beta,
-                                    gamma,
-                                    advice_evals,
-                                    fixed_evals,
-                                    instance_evals,
-                                )
-                            })
-                            .into_iter(),
-                    )
             });
 
         vanishing.verify(params, expressions, y, xn)
     };
 
-    let queries = instance_commitments
-        .iter()
-        .zip(instance_evals.iter())
-        .zip(advice_commitments.iter())
+    let queries = advice_commitments.iter()
         .zip(advice_evals.iter())
         .zip(permutations_evaluated.iter())
-        .zip(lookups_evaluated.iter())
         .flat_map(
             |(
-                 (
-                     (((instance_commitments, instance_evals), advice_commitments), advice_evals),
+
+                     (advice_commitments, advice_evals),
                      permutation,
-                 ),
-                 lookups,
+
              )| {
                 iter::empty()
-                    .chain(vk.cs.instance_queries.iter().enumerate().map(
-                        move |(query_index, &(column, at))| {
-                            VerifierQuery::new_commitment(
-                                &instance_commitments[column.index()],
-                                vk.domain.rotate_omega(*x, at),
-                                instance_evals[query_index],
-                            )
-                        },
-                    ))
                     .chain(vk.cs.advice_queries.iter().enumerate().map(
                         move |(query_index, &(column, at))| {
                             VerifierQuery::new_commitment(
@@ -310,12 +210,6 @@ pub fn minimal_verify_proof<
                         },
                     ))
                     .chain(permutation.queries(vk, x))
-                    .chain(
-                        lookups
-                            .iter()
-                            .flat_map(move |p| p.queries(vk, x))
-                            .into_iter(),
-                    )
             },
         )
         .chain(

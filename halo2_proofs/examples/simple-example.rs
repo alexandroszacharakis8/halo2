@@ -5,7 +5,7 @@ use pasta_curves::{EqAffine, Fp};
 use rand_core::OsRng;
 use halo2_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Instance, Selector},
+    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Selector},
     poly::Rotation,
 };
 use halo2_proofs::plonk::{create_proof, keygen_pk, keygen_vk, MinimalSingleVerifier, minimal_verify_proof};
@@ -29,14 +29,6 @@ trait NumericInstructions<F: Field>: Chip<F> {
         a: Self::Num,
         b: Self::Num,
     ) -> Result<Self::Num, Error>;
-
-    /// Exposes a number as a public input to the circuit.
-    fn expose_public(
-        &self,
-        layouter: impl Layouter<F>,
-        num: Self::Num,
-        row: usize,
-    ) -> Result<(), Error>;
 }
 
 /// The chip that will implement our instructions! Chips store their own
@@ -54,9 +46,6 @@ struct FieldConfig {
     /// These are also the columns through which we communicate with other parts of
     /// the circuit.
     advice: [Column<Advice>; 2],
-
-    /// This is the public input (instance) column.
-    instance: Column<Instance>,
 
     // We need a selector to enable the multiplication gate, so that we aren't placing
     // any constraints on cells where `NumericInstructions::mul` is not being used.
@@ -76,10 +65,8 @@ impl<F: Field> FieldChip<F> {
     fn configure(
         meta: &mut ConstraintSystem<F>,
         advice: [Column<Advice>; 2],
-        instance: Column<Instance>,
         constant: Column<Fixed>,
     ) -> <Self as Chip<F>>::Config {
-        meta.enable_equality(instance);
         meta.enable_constant(constant);
         for column in &advice {
             meta.enable_equality(*column);
@@ -118,7 +105,6 @@ impl<F: Field> FieldChip<F> {
 
         FieldConfig {
             advice,
-            instance,
             s_mul,
         }
     }
@@ -213,17 +199,6 @@ impl<F: Field> NumericInstructions<F> for FieldChip<F> {
             },
         )
     }
-
-    fn expose_public(
-        &self,
-        mut layouter: impl Layouter<F>,
-        num: Self::Num,
-        row: usize,
-    ) -> Result<(), Error> {
-        let config = self.config();
-
-        layouter.constrain_instance(num.0.cell(), config.instance, row)
-    }
 }
 
 /// The full circuit implementation.
@@ -252,13 +227,10 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
         // We create the two advice columns that FieldChip uses for I/O.
         let advice = [meta.advice_column(), meta.advice_column()];
 
-        // We also need an instance column to store public inputs.
-        let instance = meta.instance_column();
-
         // Create a fixed column to load constants.
         let constant = meta.fixed_column();
 
-        FieldChip::configure(meta, advice, instance, constant)
+        FieldChip::configure(meta, advice, constant)
     }
 
     fn synthesize(
@@ -315,10 +287,6 @@ fn main() {
         c: Value::known(c),
     };
 
-    // Arrange the public input. We expose the multiplication result in row 0
-    // of the instance column, so we position it there in our public inputs.
-    let public_inputs = vec![];
-
     // Given the correct public input, our circuit will verify.
     let params: Params<EqAffine> = Params::new(k);
     let vk = keygen_vk(&params, &circuit).expect("keygen_vk should not fail");
@@ -327,12 +295,12 @@ fn main() {
     let rng = OsRng;
 
     let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
-    create_proof(&params, &pk, &[circuit], &[&[&public_inputs]], rng, &mut transcript)
+    create_proof(&params, &pk, &[circuit], &[&[]], rng, &mut transcript)
         .expect("proof generation should not fail");
     let transcript_writer = transcript.finalize();
 
     let strategy = MinimalSingleVerifier::new(&params);
     let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(transcript_writer.as_slice());
-    assert!(minimal_verify_proof(&params, pk.get_vk(), strategy, &[&[&public_inputs]], &mut transcript).is_ok());
+    assert!(minimal_verify_proof(&params, pk.get_vk(), strategy, &[&[]], &mut transcript).is_ok());
     println!("Proof verified");
 }

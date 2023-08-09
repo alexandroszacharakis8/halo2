@@ -1,16 +1,18 @@
 use std::marker::PhantomData;
 
 use group::ff::Field;
-use pasta_curves::{EqAffine, Fp};
-use rand_core::OsRng;
+use halo2_proofs::plonk::{
+    create_proof, keygen_pk, keygen_vk, minimal_verify_proof, MinimalSingleVerifier,
+};
+use halo2_proofs::poly::commitment::Params;
+use halo2_proofs::transcript::{Blake2bRead, Blake2bWrite, Challenge255};
 use halo2_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Selector},
     poly::Rotation,
 };
-use halo2_proofs::plonk::{create_proof, keygen_pk, keygen_vk, MinimalSingleVerifier, minimal_verify_proof};
-use halo2_proofs::poly::commitment::Params;
-use halo2_proofs::transcript::{Blake2bRead, Blake2bWrite, Challenge255};
+use pasta_curves::{EqAffine, Fp};
+use rand_core::OsRng;
 
 trait NumericInstructions<F: Field>: Chip<F> {
     /// Variable representing a number.
@@ -103,10 +105,7 @@ impl<F: Field> FieldChip<F> {
             vec![s_mul * (lhs * rhs - out)]
         });
 
-        FieldConfig {
-            advice,
-            s_mul,
-        }
+        FieldConfig { advice, s_mul }
     }
 }
 
@@ -264,7 +263,10 @@ impl<F: Field> Circuit<F> for MyCircuit<F> {
         let absq = field_chip.mul(layouter.namespace(|| "ab * ab"), ab.clone(), ab)?;
         let c_out = field_chip.mul(layouter.namespace(|| "constant * absq"), constant, absq)?;
 
-        layouter.assign_region(|| "Assert equality", |mut region| region.constrain_equal(c_out.0.cell(), c.0.cell()))
+        layouter.assign_region(
+            || "Assert equality",
+            |mut region| region.constrain_equal(c_out.0.cell(), c.0.cell()),
+        )
     }
 }
 

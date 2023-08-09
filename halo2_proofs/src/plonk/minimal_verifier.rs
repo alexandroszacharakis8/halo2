@@ -1,52 +1,30 @@
 use ff::Field;
+use pasta_curves::{EqAffine, Fp};
 use std::iter;
 
 use super::{
     vanishing, ChallengeBeta, ChallengeGamma, ChallengeTheta, ChallengeX, ChallengeY, Error,
     VerifyingKey,
 };
-use crate::arithmetic::CurveAffine;
 use crate::poly::{
     commitment::{Guard, Params, MSM},
     multiopen::{self, VerifierQuery},
 };
-use crate::transcript::{read_n_points, read_n_scalars, EncodedChallenge, TranscriptRead};
-
-/// Trait representing a strategy for verifying Halo 2 proofs.
-pub trait MinimalVerificationStrategy<'params, C: CurveAffine> {
-    /// The output type of this verification strategy after processing a proof.
-    type Output;
-
-    /// Obtains an MSM from the verifier strategy and yields back the strategy's
-    /// output.
-    fn process<E: EncodedChallenge<C>>(
-        self,
-        f: impl FnOnce(MSM<'params, C>) -> Result<Guard<'params, C, E>, Error>,
-    ) -> Result<Self::Output, Error>;
-}
+use crate::transcript::{read_n_points, read_n_scalars, Blake2bRead, Challenge255, Transcript};
 
 /// A verifier that checks a single proof at a time.
 #[derive(Debug)]
-pub struct MinimalSingleVerifier<'params, C: CurveAffine> {
-    msm: MSM<'params, C>,
+pub struct MinimalSingleVerifier<'params> {
+    msm: MSM<'params, EqAffine>,
 }
 
-impl<'params, C: CurveAffine> MinimalSingleVerifier<'params, C> {
-    /// Constructs a new single proof verifier.
-    pub fn new(params: &'params Params<C>) -> Self {
-        MinimalSingleVerifier {
-            msm: MSM::new(params),
-        }
-    }
-}
-
-impl<'params, C: CurveAffine> MinimalVerificationStrategy<'params, C> for MinimalSingleVerifier<'params, C> {
-    type Output = ();
-
-    fn process<E: EncodedChallenge<C>>(
+impl<'params> MinimalSingleVerifier<'params> {
+    fn process(
         self,
-        f: impl FnOnce(MSM<'params, C>) -> Result<Guard<'params, C, E>, Error>,
-    ) -> Result<Self::Output, Error> {
+        f: impl FnOnce(
+            MSM<'params, EqAffine>,
+        ) -> Result<Guard<'params, EqAffine, Challenge255<EqAffine>>, Error>,
+    ) -> Result<(), Error> {
         let guard = f(self.msm)?;
         let msm = guard.use_challenges();
         if msm.eval() {
@@ -55,22 +33,23 @@ impl<'params, C: CurveAffine> MinimalVerificationStrategy<'params, C> for Minima
             Err(Error::ConstraintSystemFailure)
         }
     }
+
+    /// Constructs a new single proof verifier.
+    pub fn new(params: &'params Params<EqAffine>) -> Self {
+        MinimalSingleVerifier {
+            msm: MSM::new(params),
+        }
+    }
 }
 
 /// Returns a boolean indicating whether or not the proof is valid
-pub fn minimal_verify_proof<
-    'params,
-    C: CurveAffine,
-    E: EncodedChallenge<C>,
-    T: TranscriptRead<C, E>,
-    V: MinimalVerificationStrategy<'params, C>,
->(
-    params: &'params Params<C>,
-    vk: &VerifyingKey<C>,
-    strategy: V,
-    _instances: &[&[&[C::Scalar]]],
-    transcript: &mut T,
-) -> Result<V::Output, Error> {
+pub fn minimal_verify_proof<'params>(
+    params: &'params Params<EqAffine>,
+    vk: &VerifyingKey<EqAffine>,
+    strategy: MinimalSingleVerifier,
+    _instances: &[&[&[Fp]]],
+    transcript: &mut Blake2bRead<&[u8], EqAffine, Challenge255<EqAffine>>,
+) -> Result<(), Error> {
     let num_proofs = 1;
 
     // Hash verification key into transcript
@@ -141,9 +120,9 @@ pub fn minimal_verify_proof<
             .l_i_range(*x, xn, (-((blinding_factors + 1) as i32))..=0);
         assert_eq!(l_evals.len(), 2 + blinding_factors);
         let l_last = l_evals[0];
-        let l_blind: C::Scalar = l_evals[1..(1 + blinding_factors)]
+        let l_blind: Fp = l_evals[1..(1 + blinding_factors)]
             .iter()
-            .fold(C::Scalar::ZERO, |acc, eval| acc + eval);
+            .fold(Fp::ZERO, |acc, eval| acc + eval);
         let l_0 = l_evals[1 + blinding_factors];
 
         // Compute the expected value of h(x)
@@ -189,29 +168,23 @@ pub fn minimal_verify_proof<
         vanishing.verify(params, expressions, y, xn)
     };
 
-    let queries = advice_commitments.iter()
+    let queries = advice_commitments
+        .iter()
         .zip(advice_evals.iter())
         .zip(permutations_evaluated.iter())
-        .flat_map(
-            |(
-
-                     (advice_commitments, advice_evals),
-                     permutation,
-
-             )| {
-                iter::empty()
-                    .chain(vk.cs.advice_queries.iter().enumerate().map(
-                        move |(query_index, &(column, at))| {
-                            VerifierQuery::new_commitment(
-                                &advice_commitments[column.index()],
-                                vk.domain.rotate_omega(*x, at),
-                                advice_evals[query_index],
-                            )
-                        },
-                    ))
-                    .chain(permutation.queries(vk, x))
-            },
-        )
+        .flat_map(|((advice_commitments, advice_evals), permutation)| {
+            iter::empty()
+                .chain(vk.cs.advice_queries.iter().enumerate().map(
+                    move |(query_index, &(column, at))| {
+                        VerifierQuery::new_commitment(
+                            &advice_commitments[column.index()],
+                            vk.domain.rotate_omega(*x, at),
+                            advice_evals[query_index],
+                        )
+                    },
+                ))
+                .chain(permutation.queries(vk, x))
+        })
         .chain(
             vk.cs
                 .fixed_queries

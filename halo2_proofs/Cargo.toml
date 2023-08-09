@@ -52,6 +52,7 @@ rand_core = { version = "0.6", default-features = false }
 tracing = "0.1"
 blake2b_simd = "1"
 maybe-rayon = {version = "0.1.0", default-features = false}
+midnight-circuits = { path = "../../../midnight-circuits" }
 
 # Developer tooling dependencies
 plotters = { version = "0.3.0", default-features = false, optional = true }

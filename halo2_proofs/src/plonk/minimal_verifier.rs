@@ -10,7 +10,8 @@ use crate::poly::{
     commitment::{Guard, Params, MSM},
     multiopen::{self, VerifierQuery},
 };
-use crate::transcript::{read_n_points, read_n_scalars, Blake2bRead, Challenge255, Transcript};
+use crate::transcript::{read_n_points, read_n_scalars, Transcript};
+use crate::rescue_transcript::RescueRead;
 
 /// A verifier that checks a single proof at a time.
 #[derive(Debug)]
@@ -23,7 +24,7 @@ impl<'params> MinimalSingleVerifier<'params> {
         self,
         f: impl FnOnce(
             MSM<'params, EqAffine>,
-        ) -> Result<Guard<'params, EqAffine, Challenge255<EqAffine>>, Error>,
+        ) -> Result<Guard<'params, EqAffine, Fp>, Error>,
     ) -> Result<(), Error> {
         let guard = f(self.msm)?;
         let msm = guard.use_challenges();
@@ -43,12 +44,12 @@ impl<'params> MinimalSingleVerifier<'params> {
 }
 
 /// Returns a boolean indicating whether or not the proof is valid
-pub fn minimal_verify_proof<'params>(
-    params: &'params Params<EqAffine>,
+pub fn minimal_verify_proof(
+    params: &Params<EqAffine>,
     vk: &VerifyingKey<EqAffine>,
     strategy: MinimalSingleVerifier,
     _instances: &[&[&[Fp]]],
-    transcript: &mut Blake2bRead<&[u8], EqAffine, Challenge255<EqAffine>>,
+    transcript: &mut RescueRead<&[u8]>,
 ) -> Result<(), Error> {
     let num_proofs = 1;
 
@@ -112,7 +113,7 @@ pub fn minimal_verify_proof<'params>(
     // commitments open to the correct values.
     let vanishing = {
         // x^n
-        let xn = x.pow(&[params.n, 0, 0, 0]);
+        let xn = x.pow([params.n, 0, 0, 0]);
 
         let blinding_factors = vk.cs.blinding_factors();
         let l_evals = vk

@@ -5,7 +5,6 @@ use halo2_proofs::plonk::{
     create_proof, keygen_pk, keygen_vk, minimal_verify_proof, MinimalSingleVerifier,
 };
 use halo2_proofs::poly::commitment::Params;
-use halo2_proofs::transcript::{Blake2bRead, Blake2bWrite, Challenge255};
 use halo2_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Selector},
@@ -13,6 +12,7 @@ use halo2_proofs::{
 };
 use pasta_curves::{EqAffine, Fp};
 use rand_core::OsRng;
+use halo2_proofs::rescue_transcript::{RescueRead, RescueWrite};
 
 trait NumericInstructions<F: Field>: Chip<F> {
     /// Variable representing a number.
@@ -296,13 +296,13 @@ fn main() {
 
     let rng = OsRng;
 
-    let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
+    let mut transcript = RescueWrite::<_>::init(vec![]);
     create_proof(&params, &pk, &[circuit], &[&[]], rng, &mut transcript)
         .expect("proof generation should not fail");
     let transcript_writer = transcript.finalize();
 
     let strategy = MinimalSingleVerifier::new(&params);
-    let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(transcript_writer.as_slice());
+    let mut transcript = RescueRead::<_>::init(transcript_writer.as_slice());
     assert!(minimal_verify_proof(&params, pk.get_vk(), strategy, &[&[]], &mut transcript).is_ok());
     println!("Proof verified");
 }

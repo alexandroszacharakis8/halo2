@@ -168,6 +168,42 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
 
         bool::from(best_multiexp(&scalars, &bases).is_identity())
     }
+
+    /// Perform multiexp and produces the result
+    pub fn eval_only(self) -> C::Curve {
+        let len = self.g_scalars.as_ref().map(|v| v.len()).unwrap_or(0)
+            + self.w_scalar.map(|_| 1).unwrap_or(0)
+            + self.u_scalar.map(|_| 1).unwrap_or(0)
+            + self.other.len();
+        let mut scalars: Vec<C::Scalar> = Vec::with_capacity(len);
+        let mut bases: Vec<C> = Vec::with_capacity(len);
+
+        scalars.extend(self.other.values().map(|(scalar, _)| scalar));
+        bases.extend(
+            self.other
+                .iter()
+                .map(|(x, (_, y))| C::from_xy(*x, *y).unwrap()),
+        );
+
+        if let Some(w_scalar) = self.w_scalar {
+            scalars.push(w_scalar);
+            bases.push(self.params.w);
+        }
+
+        if let Some(u_scalar) = self.u_scalar {
+            scalars.push(u_scalar);
+            bases.push(self.params.u);
+        }
+
+        if let Some(g_scalars) = &self.g_scalars {
+            scalars.extend(g_scalars);
+            bases.extend(self.params.g.iter());
+        }
+
+        assert_eq!(scalars.len(), len);
+
+        best_multiexp(&scalars, &bases)
+    }
 }
 
 #[cfg(test)]

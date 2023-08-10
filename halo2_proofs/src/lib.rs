@@ -16,6 +16,7 @@ pub mod plonk;
 pub mod poly;
 pub mod transcript;
 pub mod rescue_transcript;
+pub mod wrapper_ec;
 
 pub mod dev;
 mod helpers;

@@ -180,6 +180,7 @@ fn padding_fn(input: &[Fp]) -> Vec<Fp> {
     out
 }
 
+// FIXME: don't release anything using this
 fn base_as_scalar(base: &Fq) -> Fp {
     let mut bytes_wide = [0u8; 64];
     bytes_wide[..32].copy_from_slice(base.to_repr().as_ref());

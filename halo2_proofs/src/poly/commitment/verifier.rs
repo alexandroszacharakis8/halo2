@@ -3,6 +3,7 @@ use group::{
     Curve,
 };
 use pasta_curves::vesta::{Affine, Scalar};
+use crate::wrapper_ec::*;
 
 use super::super::Error;
 use super::{Params, MSM};
@@ -145,23 +146,23 @@ pub fn verify_proof<'a, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRea
 /// Checks to see if the proof represented within `transcript` is valid, and a
 /// point `x` that the polynomial commitment `P` opens purportedly to the value
 /// `v`. The provided `msm` should evaluate to the commitment `P` being opened.
-pub fn verify_proof_minimal<'a, C: Fp, E: EncodedChallenge<C>, T: TranscriptRead<C, E>>(
-    params: &'a Params<C>,
-    mut msm: MSM<'a, C>,
+pub fn verify_proof_minimal<'a, T: TranscriptRead<Affine, Scalar>>(
+    params: &'a Params<Affine>,
+    mut msm: MSM<'a, Affine>,
     transcript: &mut T,
-    x: C::Scalar,
-    v: C::Scalar,
-) -> Result<Guard<'a, C, E>, Error> {
+    x: Scalar,
+    v: Scalar,
+) -> Result<Guard<'a, Affine,Scalar>, Error> {
     let k = params.k as usize;
 
     let p_prime = msm.eval_only(); 
 
     // P' = P - [v] G_0 + [ξ] S
     // TODO: gaddition P - vG_0
-    let minus_v = scalar_inversion(v);
+    let minus_v = scalar_inversion(&v);
 
     // let p = add(p_prime, )
-    msm.add_constant_term(-v); // add [-v] G_0
+    // msm.add_constant_term(-v); // add [-v] G_0
     let s_poly_commitment = transcript.read_point().map_err(|_| Error::OpeningError)?;
     // TODO: Hash  
     let xi = *transcript.squeeze_challenge_scalar::<()>();

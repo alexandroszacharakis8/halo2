@@ -2,13 +2,14 @@ use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
+use image::imageops::invert;
 use std::io::Read;
 use pasta_curves::vesta::{Affine, Scalar};
 use crate::{wrapper_ec::*, rescue_transcript::RescueRead};
 
 use super::super::Error;
 use super::{Params, MSM};
-use crate::transcript::{EncodedChallenge, TranscriptRead};
+use crate::transcript::{EncodedChallenge, TranscriptRead, Transcript};
 
 use crate::arithmetic::{best_multiexp, CurveAffine};
 
@@ -170,9 +171,11 @@ pub fn verify_proof_minimal<'a>(
     // TODO: Hash  
     let xi = *transcript.squeeze_challenge_scalar::<()>();
     // TODO: Update hasher  
-    msm.append_term(xi, s_poly_commitment);
+    let xis = mul(&xi, &s_poly_commitment);
+    let p_prime = add(&p_minus_vg0, &xis);
+    // We have p_prime
 
-    // TODO: Hash  
+
     let z = *transcript.squeeze_challenge_scalar::<()>();
 
     let mut rounds = vec![];
@@ -182,30 +185,26 @@ pub fn verify_proof_minimal<'a>(
         let r = transcript.read_point().map_err(|_| Error::OpeningError)?;
 
         // TODO: Hash
-        let u_j_packed = transcript.squeeze_challenge();
-        let u_j = *u_j_packed.as_challenge_scalar::<()>();
+        let u_j = transcript.squeeze_challenge();
 
-        rounds.push((l, r, u_j, /* to be inverted */ u_j, u_j_packed));
+        rounds.push((l, r, u_j, /* to be inverted */ u_j));
     }
 
-    rounds
-        .iter_mut()
-        .map(|&mut (_, _, _, ref mut u_j, _)| u_j)
-        .batch_invert();
+    // rounds
+    //     .iter_mut()
+    //     .map(|&mut (_, _, _, ref mut u_j, _)| u_j)
+    //     .batch_invert();
 
-    // TODO invert all ujs
+    rounds.iter_mut().for_each(|(_,_,_,u)| { *u = scalar_inversion(u)});
     
-    // This is the left-hand side of the verifier equation.
     // P' + \sum([u_j^{-1}] L_j) + \sum([u_j] R_j)
-    let mut u = Vec::with_capacity(k);
-    let mut u_packed: Vec<E> = Vec::with_capacity(k);
-    for (l, r, u_j, u_j_inv, u_j_packed) in rounds {
-        msm.append_term(u_j_inv, l);
-        msm.append_term(u_j, r);
-
-        u.push(u_j);
-        u_packed.push(u_j_packed);
-    }
+    // This is the left-hand side of the verifier equation.
+    let lhs = rounds.iter_mut().fold(p_prime, |p, (l,r,u,u_inv)| { 
+        let  l_uinv = mul(u_inv, l);
+        let  r_u = mul(u, r);
+        let sum = add(&r_u, &l_uinv);
+        add(&p, &sum) 
+    });
 
     // Our goal is to check that the left hand side of the verifier
     // equation
@@ -223,7 +222,17 @@ pub fn verify_proof_minimal<'a>(
 
     let c = transcript.read_scalar().map_err(|_| Error::SamplingError)?;
     let neg_c = -c;
+
     let f = transcript.read_scalar().map_err(|_| Error::SamplingError)?;
+
+    for (len, u_j) in u.iter().rev().enumerate().map(|(i, u_j)| (1 << i, u_j)) {
+        let (left, right) = v.split_at_mut(len);
+        let right = &mut right[0..len];
+        right.copy_from_slice(left);
+        for v in right {
+            *v *= u_j;
+        }
+    }
     let b = compute_b(x, &u);
 
     msm.add_to_u_scalar(neg_c * &b * &z);

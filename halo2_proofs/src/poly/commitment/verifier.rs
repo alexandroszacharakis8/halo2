@@ -73,11 +73,15 @@ pub fn verify_proof<'a, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRea
     let k = params.k as usize;
 
     // P' = P - [v] G_0 + [ξ] S
+    // TODO: gaddition P - vG_0
     msm.add_constant_term(-v); // add [-v] G_0
     let s_poly_commitment = transcript.read_point().map_err(|_| Error::OpeningError)?;
+    // TODO: Hash  
     let xi = *transcript.squeeze_challenge_scalar::<()>();
+    // TODO: Update hasher  
     msm.append_term(xi, s_poly_commitment);
 
+    // TODO: Hash  
     let z = *transcript.squeeze_challenge_scalar::<()>();
 
     let mut rounds = vec![];
@@ -86,6 +90,7 @@ pub fn verify_proof<'a, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRea
         let l = transcript.read_point().map_err(|_| Error::OpeningError)?;
         let r = transcript.read_point().map_err(|_| Error::OpeningError)?;
 
+        // TODO: Hash
         let u_j_packed = transcript.squeeze_challenge();
         let u_j = *u_j_packed.as_challenge_scalar::<()>();
 
@@ -97,6 +102,8 @@ pub fn verify_proof<'a, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRea
         .map(|&mut (_, _, _, ref mut u_j, _)| u_j)
         .batch_invert();
 
+    // TODO invert all ujs
+    
     // This is the left-hand side of the verifier equation.
     // P' + \sum([u_j^{-1}] L_j) + \sum([u_j] R_j)
     let mut u = Vec::with_capacity(k);
@@ -130,6 +137,10 @@ pub fn verify_proof<'a, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRea
 
     msm.add_to_u_scalar(neg_c * &b * &z);
     msm.add_to_w_scalar(-f);
+    
+    // TODO: massive group operations described in the comment above:
+    //  P'  + sum u_j^{-1} L_j 
+    //      + sum u_j      R_j
 
     let guard = Guard {
         msm,

@@ -2,8 +2,8 @@ use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
-use image::imageops::invert;
 use std::io::Read;
+use group::prime::PrimeCurveAffine;
 use pasta_curves::vesta::{Affine, Scalar};
 use crate::{wrapper_ec::*, rescue_transcript::RescueRead};
 
@@ -155,7 +155,7 @@ pub fn verify_proof_minimal<'a>(
     transcript: &mut RescueRead<&[u8]>,
     x: Scalar,
     v: Scalar,
-) -> Result<Guard<'a, Affine,Scalar>, Error> {
+) -> Result<(), Error> {
     let k = params.k as usize;
 
     let p = msm.eval_only(); 
@@ -179,7 +179,9 @@ pub fn verify_proof_minimal<'a>(
     let z = *transcript.squeeze_challenge_scalar::<()>();
 
     let mut rounds = vec![];
-    for _ in 0..k {
+    let mut rounded_gs = vec![vec![]];
+    rounded_gs[0] = params.g.clone();
+    for round in 0..k {
         // Read L and R from the proof and write them to the transcript
         let l = transcript.read_point().map_err(|_| Error::OpeningError)?;
         let r = transcript.read_point().map_err(|_| Error::OpeningError)?;
@@ -187,8 +189,18 @@ pub fn verify_proof_minimal<'a>(
         // TODO: Hash
         let u_j = transcript.squeeze_challenge();
 
+        // Half at
+        let half = (params.n.clone() / (1 << (round + 1))) as usize;
+        let mut first_half = rounded_gs[round][..half].to_vec();
+        let mut second_half = rounded_gs[round][half..].to_vec();
+        second_half.iter_mut().for_each(|a| *a = mul(&u_j, a));
+
+        rounded_gs[round + 1] = first_half.iter().zip(second_half.iter()).map(|(r, l)| add(r, l)).collect::<Vec<_>>();
+
         rounds.push((l, r, u_j, /* to be inverted */ u_j));
     }
+
+    assert_eq!(rounded_gs[k].len(), 1);
 
     // rounds
     //     .iter_mut()
@@ -199,7 +211,7 @@ pub fn verify_proof_minimal<'a>(
     
     // P' + \sum([u_j^{-1}] L_j) + \sum([u_j] R_j)
     // This is the left-hand side of the verifier equation.
-    let lhs = rounds.iter_mut().fold(p_prime, |p, (l,r,u,u_inv)| { 
+    let lhs = rounds.iter_mut().fold(p_prime, |p, (l,r,u,u_inv)| {
         let  l_uinv = mul(u_inv, l);
         let  r_u = mul(u, r);
         let sum = add(&r_u, &l_uinv);
@@ -225,31 +237,30 @@ pub fn verify_proof_minimal<'a>(
 
     let f = transcript.read_scalar().map_err(|_| Error::SamplingError)?;
 
-    for (len, u_j) in u.iter().rev().enumerate().map(|(i, u_j)| (1 << i, u_j)) {
-        let (left, right) = v.split_at_mut(len);
-        let right = &mut right[0..len];
-        right.copy_from_slice(left);
-        for v in right {
-            *v *= u_j;
-        }
+    let mut b = Scalar::ONE;
+
+    /// Computes $\prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} x^{2^i})$.
+    for (pow_two, u_j) in rounds.iter().rev().enumerate().map(|(i, (_, _, u_j, _))| (1 << i, u_j)) {
+        b = b * (Scalar::ONE + u_j * scalar_pow(&x, pow_two));
     }
-    let b = compute_b(x, &u);
 
-    msm.add_to_u_scalar(neg_c * &b * &z);
-    msm.add_to_w_scalar(-f);
-    
-    // TODO: massive group operations described in the comment above:
-    //  P'  + sum u_j^{-1} L_j 
-    //      + sum u_j      R_j
+    let mut rhs = Affine::identity();
+    let u = params.u;
+    let w = params.w;
 
-    let guard = Guard {
-        msm,
-        neg_c,
-        u,
-        u_packed,
-    };
+    let scalar_u = scalar_product(&[neg_c, b, z]);
 
-    Ok(guard)
+
+    rhs = add(&rhs, &mul(&scalar_u, &u));
+    rhs = sub(&rhs, &mul(&f, &w));
+
+    rhs = add(&rhs, &mul(&c, &rounded_gs[k][0]));
+
+    if lhs == rhs {
+        Ok(())
+    } else {
+        Err(Error::OpeningError)
+    }
 }
 
 /// Computes $\prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} x^{2^i})$.

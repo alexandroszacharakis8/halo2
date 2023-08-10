@@ -2,14 +2,16 @@ use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
+use std::io::Read;
 use pasta_curves::vesta::{Affine, Scalar};
-use crate::wrapper_ec::*;
+use crate::{wrapper_ec::*, rescue_transcript::RescueRead};
 
 use super::super::Error;
 use super::{Params, MSM};
 use crate::transcript::{EncodedChallenge, TranscriptRead};
 
 use crate::arithmetic::{best_multiexp, CurveAffine};
+
 
 /// A guard returned by the verifier
 #[derive(Debug, Clone)]
@@ -146,23 +148,24 @@ pub fn verify_proof<'a, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRea
 /// Checks to see if the proof represented within `transcript` is valid, and a
 /// point `x` that the polynomial commitment `P` opens purportedly to the value
 /// `v`. The provided `msm` should evaluate to the commitment `P` being opened.
-pub fn verify_proof_minimal<'a, T: TranscriptRead<Affine, Scalar>>(
+pub fn verify_proof_minimal<'a>(
     params: &'a Params<Affine>,
     mut msm: MSM<'a, Affine>,
-    transcript: &mut T,
+    transcript: &mut RescueRead<&[u8]>,
     x: Scalar,
     v: Scalar,
 ) -> Result<Guard<'a, Affine,Scalar>, Error> {
     let k = params.k as usize;
 
-    let p_prime = msm.eval_only(); 
+    let p = msm.eval_only(); 
 
     // P' = P - [v] G_0 + [ξ] S
     // TODO: gaddition P - vG_0
-    let minus_v = scalar_inversion(&v);
+    // let minus_v = scalar_inversion(&v);
+    let vg0 = mul(&v, &p.into());
+    let p_minus_vg0 = sub(&p.into(), &vg0);
+    // at this point P - vG0
 
-    // let p = add(p_prime, )
-    // msm.add_constant_term(-v); // add [-v] G_0
     let s_poly_commitment = transcript.read_point().map_err(|_| Error::OpeningError)?;
     // TODO: Hash  
     let xi = *transcript.squeeze_challenge_scalar::<()>();

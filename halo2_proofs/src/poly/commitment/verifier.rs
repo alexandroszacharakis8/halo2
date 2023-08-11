@@ -2,7 +2,6 @@ use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
-use std::io::Read;
 use group::prime::PrimeCurveAffine;
 use pasta_curves::vesta::{Affine, Scalar};
 use crate::{wrapper_ec::*, rescue_transcript::RescueRead};
@@ -151,7 +150,7 @@ pub fn verify_proof<'a, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRea
 /// `v`. The provided `msm` should evaluate to the commitment `P` being opened.
 pub fn verify_proof_minimal<'a>(
     params: &'a Params<Affine>,
-    mut msm: MSM<'a, Affine>,
+    msm: MSM<'a, Affine>,
     transcript: &mut RescueRead<&[u8]>,
     x: Scalar,
     v: Scalar,
@@ -191,7 +190,7 @@ pub fn verify_proof_minimal<'a>(
 
         // Half at
         let half = (params.n.clone() / (1 << (round + 1))) as usize;
-        let mut first_half = rounded_gs[round][..half].to_vec();
+        let first_half = rounded_gs[round][..half].to_vec();
         let mut second_half = rounded_gs[round][half..].to_vec();
         second_half.iter_mut().for_each(|a| *a = mul(&u_j, a));
 
@@ -239,7 +238,7 @@ pub fn verify_proof_minimal<'a>(
 
     let mut b = Scalar::ONE;
 
-    /// Computes $\prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} x^{2^i})$.
+    // Computes $\prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} x^{2^i})$.
     for (pow_two, u_j) in rounds.iter().rev().enumerate().map(|(i, (_, _, u_j, _))| (1 << i, u_j)) {
         b = b * (Scalar::ONE + u_j * scalar_pow(&x, pow_two));
     }

@@ -12,7 +12,7 @@ mod prover;
 mod verifier;
 
 pub use prover::create_proof;
-pub use verifier::verify_proof;
+pub use verifier::{verify_proof, verify_proof_minimal};
 
 #[derive(Clone, Copy, Debug)]
 struct X1 {}

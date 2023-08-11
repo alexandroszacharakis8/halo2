@@ -7,7 +7,7 @@ use super::{
     VerifyingKey,
 };
 use crate::poly::{
-    commitment::{Guard, Params, MSM},
+    commitment::{Params, MSM},
     multiopen::{self, VerifierQuery},
 };
 use crate::transcript::{read_n_points, read_n_scalars, Transcript};
@@ -24,15 +24,9 @@ impl<'params> MinimalSingleVerifier<'params> {
         self,
         f: impl FnOnce(
             MSM<'params, EqAffine>,
-        ) -> Result<Guard<'params, EqAffine, Fp>, Error>,
+        ) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        let guard = f(self.msm)?;
-        let msm = guard.use_challenges();
-        if msm.eval() {
-            Ok(())
-        } else {
-            Err(Error::ConstraintSystemFailure)
-        }
+        f(self.msm)
     }
 
     /// Constructs a new single proof verifier.
@@ -205,6 +199,6 @@ pub fn minimal_verify_proof(
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values.
     strategy.process(|msm| {
-        multiopen::verify_proof(params, transcript, queries, msm).map_err(|_| Error::Opening)
+        multiopen::verify_proof_minimal(params, transcript, queries, msm).map_err(|_| Error::Opening)
     })
 }

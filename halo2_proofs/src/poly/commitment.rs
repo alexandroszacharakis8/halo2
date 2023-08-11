@@ -17,7 +17,7 @@ mod verifier;
 
 pub use msm::MSM;
 pub use prover::create_proof;
-pub use verifier::{verify_proof, Accumulator, Guard};
+pub use verifier::{verify_proof, verify_proof_minimal, Accumulator, Guard};
 
 use std::io;
 

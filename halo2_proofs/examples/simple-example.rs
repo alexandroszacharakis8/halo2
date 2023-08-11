@@ -1,9 +1,7 @@
 use std::marker::PhantomData;
 
 use group::ff::Field;
-use halo2_proofs::plonk::{
-    create_proof, keygen_pk, keygen_vk, minimal_verify_proof, MinimalSingleVerifier,
-};
+use halo2_proofs::plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, minimal_verify_proof, MinimalSingleVerifier, SingleVerifier};
 use halo2_proofs::poly::commitment::Params;
 use halo2_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
@@ -13,6 +11,8 @@ use halo2_proofs::{
 use pasta_curves::{EqAffine, Fp};
 use rand_core::OsRng;
 use halo2_proofs::rescue_transcript::{RescueRead, RescueWrite};
+
+use rand_core::SeedableRng;
 
 trait NumericInstructions<F: Field>: Chip<F> {
     /// Variable representing a number.
@@ -294,15 +294,16 @@ fn main() {
     let vk = keygen_vk(&params, &circuit).expect("keygen_vk should not fail");
     let pk = keygen_pk(&params, vk, &circuit).expect("keygen_pk should not fail");
 
-    let rng = OsRng;
+    let rng = rand_chacha::ChaChaRng::from_seed([0u8; 32]);
 
     let mut transcript = RescueWrite::<_>::init(vec![]);
     create_proof(&params, &pk, &[circuit], &[&[]], rng, &mut transcript)
         .expect("proof generation should not fail");
     let transcript_writer = transcript.finalize();
 
-    let strategy = MinimalSingleVerifier::new(&params);
+    let new_strategy = MinimalSingleVerifier::new(&params);
     let mut transcript = RescueRead::<_>::init(transcript_writer.as_slice());
-    assert!(minimal_verify_proof(&params, pk.get_vk(), strategy, &[&[]], &mut transcript).is_ok());
+    assert!(minimal_verify_proof(&params, pk.get_vk(), new_strategy, &[&[]], &mut transcript).is_ok());
+
     println!("Proof verified");
 }

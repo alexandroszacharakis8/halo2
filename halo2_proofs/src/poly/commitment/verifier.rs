@@ -75,12 +75,19 @@ pub fn verify_proof<'a, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRea
     v: C::Scalar,
 ) -> Result<Guard<'a, C, E>, Error> {
     let k = params.k as usize;
+    let p = msm.clone().eval_only().to_affine();
+    println!("Valid init msm: {:?}", p);
 
     // P' = P - [v] G_0 + [ξ] S
     msm.add_constant_term(-v); // add [-v] G_0
+
+    let p = msm.clone().eval_only().to_affine();
+    println!("Valid min v: {:?}", p);
     let s_poly_commitment = transcript.read_point().map_err(|_| Error::OpeningError)?;
     let xi = *transcript.squeeze_challenge_scalar::<()>();
     msm.append_term(xi, s_poly_commitment);
+
+    println!("Valid P prime: {:?}", msm.clone().eval_only().to_affine());
 
     let z = *transcript.squeeze_challenge_scalar::<()>();
 
@@ -131,6 +138,7 @@ pub fn verify_proof<'a, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRea
     let neg_c = -c;
     let f = transcript.read_scalar().map_err(|_| Error::SamplingError)?;
     let b = compute_b(x, &u);
+    println!("correct b: {:?}", b);
 
     msm.add_to_u_scalar(neg_c * &b * &z);
     msm.add_to_w_scalar(-f);
@@ -157,54 +165,50 @@ pub fn verify_proof_minimal<'a>(
 ) -> Result<(), Error> {
     let k = params.k as usize;
 
-    let p = msm.eval_only(); 
+    let p = msm.clone().eval_only().to_affine();
 
     // P' = P - [v] G_0 + [ξ] S
-    // TODO: gaddition P - vG_0
-    // let minus_v = scalar_inversion(&v);
-    let vg0 = mul(&v, &p.into());
-    let p_minus_vg0 = sub(&p.into(), &vg0);
-    // at this point P - vG0
+    let g_zero = params.g[0];
+    let vg0 = mul(&v, &g_zero);
+    let p_minus_vg0 = sub(&p, &vg0);
 
     let s_poly_commitment = transcript.read_point().map_err(|_| Error::OpeningError)?;
-    // TODO: Hash  
     let xi = *transcript.squeeze_challenge_scalar::<()>();
-    // TODO: Update hasher  
     let xis = mul(&xi, &s_poly_commitment);
     let p_prime = add(&p_minus_vg0, &xis);
-    // We have p_prime
-
 
     let z = *transcript.squeeze_challenge_scalar::<()>();
 
+    // Vector to store the commitments and challenges of each round, (l, r, u, u). We store twice the
+    // u challenges in order to compute each inverse in-place in a next step.
     let mut rounds = vec![];
-    let mut rounded_gs = vec![vec![]];
-    rounded_gs[0] = params.g.clone();
+
+    // Vector to store the folding vectors of the bases used in Pedersen commitment. We do this during
+    // our first loop for simplicity. Note that when doing batch verification this is the O(n) step,
+    // and should be batched at the end of the verifier.
+    let mut folded_gs = vec![vec![]; k + 1];
+
+    // We initialise it with the base generators
+    folded_gs[0] = params.g.clone();
     for round in 0..k {
         // Read L and R from the proof and write them to the transcript
         let l = transcript.read_point().map_err(|_| Error::OpeningError)?;
         let r = transcript.read_point().map_err(|_| Error::OpeningError)?;
 
-        // TODO: Hash
         let u_j = transcript.squeeze_challenge();
 
-        // Half at
-        let half = (params.n.clone() / (1 << (round + 1))) as usize;
-        let first_half = rounded_gs[round][..half].to_vec();
-        let mut second_half = rounded_gs[round][half..].to_vec();
+        // Half at vector at n / 2^(1 + round)
+        let half = ((1 << k) / (1 << (round + 1))) as usize;
+        let first_half = folded_gs[round][..half].to_vec();
+        let mut second_half = folded_gs[round][half..].to_vec();
         second_half.iter_mut().for_each(|a| *a = mul(&u_j, a));
 
-        rounded_gs[round + 1] = first_half.iter().zip(second_half.iter()).map(|(r, l)| add(r, l)).collect::<Vec<_>>();
+        folded_gs[round + 1] = first_half.iter().zip(second_half.iter()).map(|(r, l)| add(r, l)).collect::<Vec<_>>();
 
         rounds.push((l, r, u_j, /* to be inverted */ u_j));
     }
 
-    assert_eq!(rounded_gs[k].len(), 1);
-
-    // rounds
-    //     .iter_mut()
-    //     .map(|&mut (_, _, _, ref mut u_j, _)| u_j)
-    //     .batch_invert();
+    assert_eq!(folded_gs[k].len(), 1);
 
     rounds.iter_mut().for_each(|(_,_,_,u)| { *u = scalar_inversion(u)});
     
@@ -214,46 +218,38 @@ pub fn verify_proof_minimal<'a>(
         let  l_uinv = mul(u_inv, l);
         let  r_u = mul(u, r);
         let sum = add(&r_u, &l_uinv);
-        add(&p, &sum) 
+        add(&p, &sum)
     });
 
     // Our goal is to check that the left hand side of the verifier
     // equation
     //     P' + \sum([u_j^{-1}] L_j) + \sum([u_j] R_j)
-    // equals (given b = \mathbf{b}_0, and the prover's values c, f),
-    // the right-hand side
+    // equals the right-hand side
     //   = [c] (G'_0 + [b * z] U) + [f] W
-    // Subtracting the right-hand side from both sides we get
-    //   P' + \sum([u_j^{-1}] L_j) + \sum([u_j] R_j)
-    //   + [-c] G'_0 + [-cbz] U + [-f] W
-    //   = 0
-    //
-    // Note that the guard returned from this function does not include
-    // the [-c]G'_0 term.
 
     let c = transcript.read_scalar().map_err(|_| Error::SamplingError)?;
-    let neg_c = -c;
 
     let f = transcript.read_scalar().map_err(|_| Error::SamplingError)?;
 
     let mut b = Scalar::ONE;
+    let mut cur_power = x;
 
     // Computes $\prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} x^{2^i})$.
-    for (pow_two, u_j) in rounds.iter().rev().enumerate().map(|(i, (_, _, u_j, _))| (1 << i, u_j)) {
-        b = b * (Scalar::ONE + u_j * scalar_pow(&x, pow_two));
+    for u_j in rounds.iter().rev().map(|(_, _, u_j, _)| u_j ) {
+        b *= Scalar::ONE + &(*u_j * &cur_power);
+        cur_power *= cur_power;
     }
 
     let mut rhs = Affine::identity();
     let u = params.u;
     let w = params.w;
 
-    let scalar_u = scalar_product(&[neg_c, b, z]);
-
+    let scalar_u = scalar_product(&[c, b, z]);
 
     rhs = add(&rhs, &mul(&scalar_u, &u));
-    rhs = sub(&rhs, &mul(&f, &w));
+    rhs = add(&rhs, &mul(&f, &w));
 
-    rhs = add(&rhs, &mul(&c, &rounded_gs[k][0]));
+    rhs = add(&rhs, &mul(&c, &folded_gs[k][0]));
 
     if lhs == rhs {
         Ok(())

@@ -11,8 +11,8 @@ use crate::{arithmetic::CurveAffine, transcript::ChallengeScalar};
 mod prover;
 mod verifier;
 
-pub use prover::create_proof;
-pub use verifier::{verify_proof, verify_proof_minimal};
+pub use prover::{create_proof, create_proof_minimal};
+pub use verifier::{verify_proof, verify_proof_minimal, verify_proof_minimal_no_sets};
 
 #[derive(Clone, Copy, Debug)]
 struct X1 {}
@@ -149,6 +149,7 @@ where
     // while also creating new commitment data.
     for query in queries.clone() {
         let num_points = point_index_map.len();
+        // println!("number of points: {num_points}");
         let point_idx = point_index_map
             .entry(query.get_point())
             .or_insert(num_points);

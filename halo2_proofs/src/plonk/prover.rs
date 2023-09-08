@@ -721,7 +721,8 @@ pub fn create_proof<
         // We query the h(X) polynomial at x
         .chain(vanishing.open(x));
 
-    multiopen::create_proof(params, rng, transcript, instances).map_err(|_| Error::Opening)
+    // Minimal proof generation is to omit the multi-open efficiency trick
+    multiopen::create_proof_minimal(params, rng, transcript, instances).map_err(|_| Error::Opening)
 }
 
 #[test]

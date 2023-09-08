@@ -198,7 +198,7 @@ pub fn minimal_verify_proof(
 
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values.
-    strategy.process(|msm| {
-        multiopen::verify_proof_minimal(params, transcript, queries, msm).map_err(|_| Error::Opening)
+    strategy.process(|_msm| {
+        multiopen::verify_proof_minimal_no_sets(params, transcript, queries).map_err(|_| Error::Opening)
     })
 }

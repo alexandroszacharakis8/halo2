@@ -3,6 +3,7 @@ use group::{
     Curve,
 };
 use group::prime::PrimeCurveAffine;
+use pasta_curves::EqAffine;
 use pasta_curves::vesta::{Affine, Scalar};
 use crate::{wrapper_ec::*, rescue_transcript::RescueRead};
 
@@ -158,14 +159,12 @@ pub fn verify_proof<'a, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRea
 /// `v`. The provided `msm` should evaluate to the commitment `P` being opened.
 pub fn verify_proof_minimal<'a>(
     params: &'a Params<Affine>,
-    msm: MSM<'a, Affine>,
+    p: EqAffine,
     transcript: &mut RescueRead<&[u8]>,
     x: Scalar,
     v: Scalar,
 ) -> Result<(), Error> {
     let k = params.k as usize;
-
-    let p = msm.clone().eval_only().to_affine();
 
     // P' = P - [v] G_0 + [ξ] S
     let g_zero = params.g[0];

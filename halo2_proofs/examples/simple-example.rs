@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use group::ff::Field;
-use halo2_proofs::plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, minimal_verify_proof, MinimalSingleVerifier, SingleVerifier};
+use halo2_proofs::plonk::{create_proof, keygen_pk, keygen_vk, minimal_verify_proof, MinimalSingleVerifier};
 use halo2_proofs::poly::commitment::Params;
 use halo2_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
@@ -9,7 +9,6 @@ use halo2_proofs::{
     poly::Rotation,
 };
 use pasta_curves::{EqAffine, Fp};
-use rand_core::OsRng;
 use halo2_proofs::rescue_transcript::{RescueRead, RescueWrite};
 
 use rand_core::SeedableRng;
@@ -303,7 +302,9 @@ fn main() {
 
     let new_strategy = MinimalSingleVerifier::new(&params);
     let mut transcript = RescueRead::<_>::init(transcript_writer.as_slice());
-    assert!(minimal_verify_proof(&params, pk.get_vk(), new_strategy, &[&[]], &mut transcript).is_ok());
+    let verify = minimal_verify_proof(&params, pk.get_vk(), new_strategy, &[&[]], &mut transcript);
+    verify.unwrap();
+    // assert!(verify.is_ok());
 
     println!("Proof verified");
 }

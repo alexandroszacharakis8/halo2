@@ -11,6 +11,7 @@ use crate::{
     },
     transcript::{read_n_points, EncodedChallenge, TranscriptRead},
 };
+use crate::poly::multiopen::MinimalVerifierQuery;
 
 use super::super::{ChallengeX, ChallengeY};
 use super::Argument;
@@ -135,5 +136,24 @@ impl<'params, C: CurveAffine> Evaluated<'params, C> {
                 *x,
                 self.random_eval,
             )))
+    }
+
+    pub(in crate::plonk) fn minimal_queries(
+        &self,
+        x: ChallengeX<C>,
+    ) -> impl Iterator<Item = MinimalVerifierQuery<C>> + Clone
+    {
+        use group::Curve;
+        iter::empty()
+            .chain(Some(MinimalVerifierQuery {
+                point: *x,
+                commitment: self.h_commitment.clone().eval_only().to_affine(),
+                eval: self.expected_h_eval
+            }))
+            .chain(Some(MinimalVerifierQuery {
+                point: *x,
+                commitment: self.random_poly_commitment,
+                eval: self.random_eval
+            }))
     }
 }

@@ -1,15 +1,15 @@
 //! This module contains utilities and traits for dealing with Fiat-Shamir
 //! transcripts.
 
-use group::ff::{FromUniformBytes, PrimeField, Field};
+use group::ff::{Field, FromUniformBytes, PrimeField};
 use midnight_circuits::{RescueParametersPallas, RescueSponge};
 
 use crate::arithmetic::{Coordinates, CurveAffine};
 
-use std::io::{self, Read, Write};
+use crate::transcript::{EncodedChallenge, Transcript, TranscriptRead, TranscriptWrite};
 use group::GroupEncoding;
 use pasta_curves::{EqAffine, Fp, Fq};
-use crate::transcript::{EncodedChallenge, Transcript, TranscriptRead, TranscriptWrite};
+use std::io::{self, Read, Write};
 
 /// RescueRead used for a rescue-based transcript
 #[derive(Debug, Clone)]
@@ -30,9 +30,7 @@ impl<R: Read> RescueRead<R> {
     }
 }
 
-impl<R: Read> TranscriptRead<EqAffine, Fp>
-for RescueRead<R>
-{
+impl<R: Read> TranscriptRead<EqAffine, Fp> for RescueRead<R> {
     fn read_point(&mut self) -> io::Result<EqAffine> {
         let mut compressed = <EqAffine as GroupEncoding>::Repr::default();
         self.reader.read_exact(compressed.as_mut())?;
@@ -59,13 +57,14 @@ for RescueRead<R>
     }
 }
 
-impl<R: Read> Transcript<EqAffine, Fp> for RescueRead<R>
-{
+impl<R: Read> Transcript<EqAffine, Fp> for RescueRead<R> {
     fn squeeze_challenge(&mut self) -> Fp {
         self.state.extend_from_slice(&[Fp::ZERO]);
         let hasher = self.state.clone();
         let mut bytes = [0u8; 64];
-        bytes[..32].copy_from_slice(&RescueSponge::<Fp, RescueParametersPallas>::hash(&hasher, Some(padding_fn)).to_repr());
+        bytes[..32].copy_from_slice(
+            &RescueSponge::<Fp, RescueParametersPallas>::hash(&hasher, Some(padding_fn)).to_repr(),
+        );
         <Fp as EncodedChallenge<EqAffine>>::new(&bytes)
     }
 
@@ -116,9 +115,7 @@ impl<W: Write> RescueWrite<W> {
     }
 }
 
-impl<W: Write> TranscriptWrite<EqAffine, Fp>
-for RescueWrite<W>
-{
+impl<W: Write> TranscriptWrite<EqAffine, Fp> for RescueWrite<W> {
     fn write_point(&mut self, point: EqAffine) -> io::Result<()> {
         self.common_point(point)?;
         let compressed = point.to_bytes();
@@ -131,9 +128,7 @@ for RescueWrite<W>
     }
 }
 
-impl<W: Write> Transcript<EqAffine, Fp>
-for RescueWrite<W>
-{
+impl<W: Write> Transcript<EqAffine, Fp> for RescueWrite<W> {
     fn squeeze_challenge(&mut self) -> Fp {
         self.state.push(Fp::ZERO);
         let hasher = self.state.clone();
@@ -162,8 +157,7 @@ for RescueWrite<W>
     }
 }
 
-impl EncodedChallenge<EqAffine> for Fp
-{
+impl EncodedChallenge<EqAffine> for Fp {
     type Input = [u8; 64];
 
     fn new(challenge_input: &[u8; 64]) -> Self {

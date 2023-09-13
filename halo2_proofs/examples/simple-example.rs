@@ -1,15 +1,17 @@
 use std::marker::PhantomData;
 
 use group::ff::Field;
-use halo2_proofs::plonk::{create_proof, keygen_pk, keygen_vk, minimal_verify_proof, MinimalSingleVerifier};
+use halo2_proofs::plonk::{
+    create_proof, keygen_pk, keygen_vk, minimal_verify_proof, MinimalSingleVerifier,
+};
 use halo2_proofs::poly::commitment::Params;
+use halo2_proofs::rescue_transcript::{RescueRead, RescueWrite};
 use halo2_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Selector},
     poly::Rotation,
 };
 use pasta_curves::{EqAffine, Fp};
-use halo2_proofs::rescue_transcript::{RescueRead, RescueWrite};
 
 use rand_core::SeedableRng;
 

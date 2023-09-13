@@ -2,11 +2,11 @@
 //! and instead rely solely on the pallas curve.
 #![allow(missing_docs)]
 
-use std::ops::Mul;
 use ff::Field;
-use group::Curve;
 use group::prime::PrimeCurveAffine;
+use group::Curve;
 use pasta_curves::vesta::{Affine, Scalar};
+use std::ops::Mul;
 
 pub fn add(lhs: &Affine, rhs: &Affine) -> Affine {
     (lhs + rhs).to_affine()
@@ -34,9 +34,12 @@ pub fn scalar_pow(scalar: &Scalar, power: u64) -> Scalar {
 
 pub fn own_msm(scalars: &[Scalar], points: &[Affine]) -> Affine {
     let mut result = Affine::identity();
-    scalars.into_iter().zip(points.into_iter()).for_each(|(scalar, point)| {
-        result = (result + point.mul(scalar).to_affine()).to_affine();
-    });
+    scalars
+        .into_iter()
+        .zip(points.into_iter())
+        .for_each(|(scalar, point)| {
+            result = (result + point.mul(scalar).to_affine()).to_affine();
+        });
 
     result
 }
@@ -44,17 +47,19 @@ pub fn own_msm(scalars: &[Scalar], points: &[Affine]) -> Affine {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rand_core::OsRng;
     use crate::arithmetic::best_multiexp;
+    use rand_core::OsRng;
 
     // Just sanity check for the msm
     #[test]
     fn msm() {
         let scalars = (0..10).map(|_| Scalar::random(OsRng)).collect::<Vec<_>>();
-        let points = (0..10).map(|_| {
-            let a = Scalar::random(OsRng);
-            (Affine::generator().mul(&a)).to_affine()
-        }).collect::<Vec<Affine>>();
+        let points = (0..10)
+            .map(|_| {
+                let a = Scalar::random(OsRng);
+                (Affine::generator().mul(&a)).to_affine()
+            })
+            .collect::<Vec<Affine>>();
 
         let msm_result = best_multiexp(&scalars, &points).to_affine();
 
@@ -63,4 +68,3 @@ mod test {
         assert_eq!(msm_result, own_result);
     }
 }
-

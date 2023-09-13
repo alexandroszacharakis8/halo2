@@ -6,12 +6,13 @@ use super::{
     vanishing, ChallengeBeta, ChallengeGamma, ChallengeTheta, ChallengeX, ChallengeY, Error,
     VerifyingKey,
 };
+use crate::poly::multiopen::MinimalVerifierQuery;
 use crate::poly::{
     commitment::{Params, MSM},
-    multiopen::{self, VerifierQuery},
+    multiopen,
 };
-use crate::transcript::{read_n_points, read_n_scalars, Transcript};
 use crate::rescue_transcript::RescueRead;
+use crate::transcript::{read_n_points, read_n_scalars, Transcript};
 
 /// A verifier that checks a single proof at a time.
 #[derive(Debug)]
@@ -22,9 +23,7 @@ pub struct MinimalSingleVerifier<'params> {
 impl<'params> MinimalSingleVerifier<'params> {
     fn process(
         self,
-        f: impl FnOnce(
-            MSM<'params, EqAffine>,
-        ) -> Result<(), Error>,
+        f: impl FnOnce(MSM<'params, EqAffine>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         f(self.msm)
     }
@@ -170,15 +169,13 @@ pub fn minimal_verify_proof(
         .flat_map(|((advice_commitments, advice_evals), permutation)| {
             iter::empty()
                 .chain(vk.cs.advice_queries.iter().enumerate().map(
-                    move |(query_index, &(column, at))| {
-                        VerifierQuery::new_commitment(
-                            &advice_commitments[column.index()],
-                            vk.domain.rotate_omega(*x, at),
-                            advice_evals[query_index],
-                        )
+                    move |(query_index, &(column, at))| MinimalVerifierQuery {
+                        point: vk.domain.rotate_omega(*x, at),
+                        commitment: advice_commitments[column.index()],
+                        eval: advice_evals[query_index],
                     },
                 ))
-                .chain(permutation.queries(vk, x))
+                .chain(permutation.queries_minimal(vk, x))
         })
         .chain(
             vk.cs
@@ -186,19 +183,20 @@ pub fn minimal_verify_proof(
                 .iter()
                 .enumerate()
                 .map(|(query_index, &(column, at))| {
-                    VerifierQuery::new_commitment(
-                        &vk.fixed_commitments[column.index()],
-                        vk.domain.rotate_omega(*x, at),
-                        fixed_evals[query_index],
-                    )
+                    MinimalVerifierQuery {
+                        point: vk.domain.rotate_omega(*x, at),
+                        commitment: vk.fixed_commitments[column.index()],
+                        eval: fixed_evals[query_index]
+                    }
                 }),
         )
-        .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(vanishing.queries(x));
+        .chain(permutations_common.minimal_queries(&vk.permutation, x))
+        .chain(vanishing.minimal_queries(x));
 
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values.
     strategy.process(|_msm| {
-        multiopen::verify_proof_minimal_no_sets(params, transcript, queries).map_err(|_| Error::Opening)
+        multiopen::verify_proof_minimal_no_sets(params, transcript, queries)
+            .map_err(|_| Error::Opening)
     })
 }

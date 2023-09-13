@@ -57,6 +57,31 @@ pub struct VerifierQuery<'r, 'params: 'r, C: CurveAffine> {
     eval: C::Scalar,
 }
 
+/// A minimal polynomial query at a point
+#[derive(Debug, Clone)]
+pub struct MinimalVerifierQuery<C: CurveAffine> {
+    /// Point at which poly is evaluated
+    pub(crate) point: C::Scalar,
+    /// Commitment
+    pub(crate) commitment: C,
+    /// Evaluation of polynomial at query point
+    pub(crate) eval: C::Scalar,
+}
+
+impl<C: CurveAffine> MinimalVerifierQuery<C> {
+    pub fn get_point(&self) -> C::Scalar {
+        self.point
+    }
+
+    pub fn get_eval(&self) -> C::Scalar {
+        self.eval
+    }
+
+    pub fn get_commitment(&self) -> C {
+        self.commitment
+    }
+}
+
 impl<'r, 'params: 'r, C: CurveAffine> VerifierQuery<'r, 'params, C> {
     /// Create a new verifier query based on a commitment
     pub fn new_commitment(commitment: &'r C, point: C::Scalar, eval: C::Scalar) -> Self {

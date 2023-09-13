@@ -1,18 +1,17 @@
+use crate::{rescue_transcript::RescueRead, wrapper_ec::*};
+use group::prime::PrimeCurveAffine;
 use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
-use group::prime::PrimeCurveAffine;
-use pasta_curves::EqAffine;
 use pasta_curves::vesta::{Affine, Scalar};
-use crate::{wrapper_ec::*, rescue_transcript::RescueRead};
+use pasta_curves::EqAffine;
 
 use super::super::Error;
 use super::{Params, MSM};
-use crate::transcript::{EncodedChallenge, TranscriptRead, Transcript};
+use crate::transcript::{EncodedChallenge, Transcript, TranscriptRead};
 
 use crate::arithmetic::{best_multiexp, CurveAffine};
-
 
 /// A guard returned by the verifier
 #[derive(Debug, Clone)]
@@ -202,20 +201,26 @@ pub fn verify_proof_minimal<'a>(
         let mut second_half = folded_gs[round][half..].to_vec();
         second_half.iter_mut().for_each(|a| *a = mul(&u_j, a));
 
-        folded_gs[round + 1] = first_half.iter().zip(second_half.iter()).map(|(r, l)| add(r, l)).collect::<Vec<_>>();
+        folded_gs[round + 1] = first_half
+            .iter()
+            .zip(second_half.iter())
+            .map(|(r, l)| add(r, l))
+            .collect::<Vec<_>>();
 
         rounds.push((l, r, u_j, /* to be inverted */ u_j));
     }
 
     assert_eq!(folded_gs[k].len(), 1);
 
-    rounds.iter_mut().for_each(|(_,_,_,u)| { *u = scalar_inversion(u)});
-    
+    rounds
+        .iter_mut()
+        .for_each(|(_, _, _, u)| *u = scalar_inversion(u));
+
     // P' + \sum([u_j^{-1}] L_j) + \sum([u_j] R_j)
     // This is the left-hand side of the verifier equation.
-    let lhs = rounds.iter_mut().fold(p_prime, |p, (l,r,u,u_inv)| {
-        let  l_uinv = mul(u_inv, l);
-        let  r_u = mul(u, r);
+    let lhs = rounds.iter_mut().fold(p_prime, |p, (l, r, u, u_inv)| {
+        let l_uinv = mul(u_inv, l);
+        let r_u = mul(u, r);
         let sum = add(&r_u, &l_uinv);
         add(&p, &sum)
     });
@@ -234,7 +239,7 @@ pub fn verify_proof_minimal<'a>(
     let mut cur_power = x;
 
     // Computes $\prod\limits_{i=0}^{k-1} (1 + u_{k - 1 - i} x^{2^i})$.
-    for u_j in rounds.iter().rev().map(|(_, _, u_j, _)| u_j ) {
+    for u_j in rounds.iter().rev().map(|(_, _, u_j, _)| u_j) {
         b *= Scalar::ONE + &(*u_j * &cur_power);
         cur_power *= cur_power;
     }

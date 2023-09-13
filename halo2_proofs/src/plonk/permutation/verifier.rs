@@ -4,6 +4,7 @@ use std::iter;
 
 use super::super::{circuit::Any, ChallengeBeta, ChallengeGamma, ChallengeX};
 use super::{Argument, VerifyingKey};
+use crate::poly::multiopen::MinimalVerifierQuery;
 use crate::{
     arithmetic::CurveAffine,
     plonk::{self, Error},
@@ -224,6 +225,43 @@ impl<C: CurveAffine> Evaluated<C> {
                 ))
             }))
     }
+
+    pub(in crate::plonk) fn queries_minimal<'a>(
+        &'a self,
+        vk: &'a plonk::VerifyingKey<C>,
+        x: ChallengeX<C>,
+    ) -> impl Iterator<Item = MinimalVerifierQuery<C>> + Clone + 'a {
+        let blinding_factors = vk.cs.blinding_factors();
+        let x_next = vk.domain.rotate_omega(*x, Rotation::next());
+        let x_last = vk
+            .domain
+            .rotate_omega(*x, Rotation(-((blinding_factors + 1) as i32)));
+
+        iter::empty()
+            .chain(self.sets.iter().flat_map(move |set| {
+                iter::empty()
+                    // Open permutation product commitments at x and \omega^{-1} x
+                    // Open permutation product commitments at x and \omega x
+                    .chain(Some(MinimalVerifierQuery {
+                        point: *x,
+                        commitment: set.permutation_product_commitment,
+                        eval: set.permutation_product_eval,
+                    }))
+                    .chain(Some(MinimalVerifierQuery {
+                        point: x_next,
+                        commitment: set.permutation_product_commitment,
+                        eval: set.permutation_product_next_eval,
+                    }))
+            }))
+            // Open it at \omega^{last} x for all but the last set
+            .chain(self.sets.iter().rev().skip(1).flat_map(move |set| {
+                Some(MinimalVerifierQuery {
+                    point: x_last,
+                    commitment: set.permutation_product_commitment,
+                    eval: set.permutation_product_last_eval.unwrap(),
+                })
+            }))
+    }
 }
 
 impl<C: CurveAffine> CommonEvaluated<C> {
@@ -237,5 +275,21 @@ impl<C: CurveAffine> CommonEvaluated<C> {
             .iter()
             .zip(self.permutation_evals.iter())
             .map(move |(commitment, &eval)| VerifierQuery::new_commitment(commitment, *x, eval))
+    }
+
+    pub(in crate::plonk) fn minimal_queries<'a>(
+        &'a self,
+        vkey: &'a VerifyingKey<C>,
+        x: ChallengeX<C>,
+    ) -> impl Iterator<Item = MinimalVerifierQuery<C>> + Clone + 'a {
+        // Open permutation commitments for each permutation argument at x
+        vkey.commitments
+            .iter()
+            .zip(self.permutation_evals.iter())
+            .map(move |(commitment, &eval)| MinimalVerifierQuery{
+                point: *x,
+                commitment: *commitment,
+                eval
+            })
     }
 }

@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use super::super::{
     commitment::{self, Blind, Params},
     Coeff, Polynomial,
@@ -7,6 +6,7 @@ use super::{
     construct_intermediate_sets, ChallengeX1, ChallengeX2, ChallengeX3, ChallengeX4, ProverQuery,
     Query,
 };
+use std::collections::BTreeMap;
 
 use crate::arithmetic::{eval_polynomial, kate_division, CurveAffine};
 use crate::transcript::{EncodedChallenge, TranscriptWrite};
@@ -47,7 +47,10 @@ where
     {
         let mut accumulate =
             |set_idx: usize, new_poly: &Polynomial<C::Scalar, Coeff>, blind: Blind<C::Scalar>| {
-                println!("Commitment of query: {:?}", params.commit(new_poly, blind.clone()).to_affine());
+                println!(
+                    "Commitment of query: {:?}",
+                    params.commit(new_poly, blind.clone()).to_affine()
+                );
                 if let Some(poly) = &q_polys[set_idx] {
                     q_polys[set_idx] = Some(poly.clone() * *x_1 + new_poly);
                 } else {
@@ -131,8 +134,8 @@ pub fn create_proof_minimal<
     transcript: &mut T,
     queries: I,
 ) -> io::Result<()>
-    where
-        I: IntoIterator<Item = ProverQuery<'a, C>> + Clone,
+where
+    I: IntoIterator<Item = ProverQuery<'a, C>> + Clone,
 {
     let x_1: ChallengeX1<_> = transcript.squeeze_challenge_scalar();
     let x_2: ChallengeX2<_> = transcript.squeeze_challenge_scalar();
@@ -146,7 +149,9 @@ pub fn create_proof_minimal<
 
     for query in queries.clone() {
         let num_points = point_index_map.len();
-        point_index_map.entry(query.get_point()).or_insert(num_points);
+        point_index_map
+            .entry(query.get_point())
+            .or_insert(num_points);
     }
 
     // Compress the polynomials and blinds into single openings using x_1.
@@ -168,7 +173,8 @@ pub fn create_proof_minimal<
         q_blinds[q_comm_index] += query.blind;
     }
 
-    let q_prime_poly = point_index_map.iter()
+    let q_prime_poly = point_index_map
+        .iter()
         .fold(None, |q_prime_poly, (&point, &index)| {
             let mut poly = kate_division(&q_polys[index].clone().unwrap().values, point);
             poly.resize(params.n as usize, C::Scalar::ZERO);

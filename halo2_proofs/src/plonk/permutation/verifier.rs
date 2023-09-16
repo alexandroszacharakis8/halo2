@@ -13,22 +13,22 @@ use crate::{
 };
 
 pub struct Committed<C: CurveAffine> {
-    permutation_product_commitments: Vec<C>,
+    pub(crate) permutation_product_commitments: Vec<C>,
 }
 
 pub struct EvaluatedSet<C: CurveAffine> {
     permutation_product_commitment: C,
-    permutation_product_eval: C::Scalar,
-    permutation_product_next_eval: C::Scalar,
-    permutation_product_last_eval: Option<C::Scalar>,
+    pub(crate) permutation_product_eval: C::Scalar,
+    pub(crate) permutation_product_next_eval: C::Scalar,
+    pub(crate) permutation_product_last_eval: Option<C::Scalar>,
 }
 
 pub struct CommonEvaluated<C: CurveAffine> {
-    permutation_evals: Vec<C::Scalar>,
+    pub permutation_evals: Vec<C::Scalar>,
 }
 
 pub struct Evaluated<C: CurveAffine> {
-    sets: Vec<EvaluatedSet<C>>,
+    pub sets: Vec<EvaluatedSet<C>>,
 }
 
 impl Argument {
@@ -118,6 +118,8 @@ impl<C: CurveAffine> Evaluated<C> {
         x: ChallengeX<C>,
     ) -> impl Iterator<Item = C::Scalar> + 'a {
         let chunk_len = vk.cs_degree - 2;
+        println!("Chunk_len: {:?}", chunk_len);
+        println!("Number of sets: {:?}", self.sets.len());
         iter::empty()
             // Enforce only for the first set.
             // l_0(X) * (1 - z_0(X)) = 0
@@ -286,10 +288,10 @@ impl<C: CurveAffine> CommonEvaluated<C> {
         vkey.commitments
             .iter()
             .zip(self.permutation_evals.iter())
-            .map(move |(commitment, &eval)| MinimalVerifierQuery{
+            .map(move |(commitment, &eval)| MinimalVerifierQuery {
                 point: *x,
                 commitment: *commitment,
-                eval
+                eval,
             })
     }
 }

@@ -2,6 +2,7 @@ use std::iter;
 
 use ff::Field;
 
+use crate::poly::multiopen::MinimalVerifierQuery;
 use crate::{
     arithmetic::CurveAffine,
     plonk::{Error, VerifyingKey},
@@ -11,7 +12,6 @@ use crate::{
     },
     transcript::{read_n_points, EncodedChallenge, TranscriptRead},
 };
-use crate::poly::multiopen::MinimalVerifierQuery;
 
 use super::super::{ChallengeX, ChallengeY};
 use super::Argument;
@@ -21,7 +21,7 @@ pub struct Committed<C: CurveAffine> {
 }
 
 pub struct Constructed<C: CurveAffine> {
-    h_commitments: Vec<C>,
+    pub h_commitments: Vec<C>,
     random_poly_commitment: C,
 }
 
@@ -141,19 +141,18 @@ impl<'params, C: CurveAffine> Evaluated<'params, C> {
     pub(in crate::plonk) fn minimal_queries(
         &self,
         x: ChallengeX<C>,
-    ) -> impl Iterator<Item = MinimalVerifierQuery<C>> + Clone
-    {
+    ) -> impl Iterator<Item = MinimalVerifierQuery<C>> + Clone {
         use group::Curve;
         iter::empty()
             .chain(Some(MinimalVerifierQuery {
                 point: *x,
                 commitment: self.h_commitment.clone().eval_only().to_affine(),
-                eval: self.expected_h_eval
+                eval: self.expected_h_eval,
             }))
             .chain(Some(MinimalVerifierQuery {
                 point: *x,
                 commitment: self.random_poly_commitment,
-                eval: self.random_eval
+                eval: self.random_eval,
             }))
     }
 }

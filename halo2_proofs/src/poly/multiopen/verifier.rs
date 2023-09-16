@@ -262,8 +262,8 @@ pub fn verify_proof_minimal_no_sets<'r, 'params: 'r, I>(
     transcript: &mut RescueRead<&[u8]>,
     queries: I,
 ) -> Result<(), Error>
-    where
-        I: IntoIterator<Item = MinimalVerifierQuery<Affine>> + Clone,
+where
+    I: IntoIterator<Item = MinimalVerifierQuery<Affine>> + Clone,
 {
     use crate::transcript::Transcript;
     // Sample x_1 for compressing openings at the same point sets together
@@ -282,7 +282,9 @@ pub fn verify_proof_minimal_no_sets<'r, 'params: 'r, I>(
 
     for query in queries.clone() {
         let num_points = point_index_map.len();
-        point_index_map.entry(query.get_point()).or_insert(num_points);
+        point_index_map
+            .entry(query.get_point())
+            .or_insert(num_points);
     }
 
     // Compress the commitments and expected evaluations at x together.

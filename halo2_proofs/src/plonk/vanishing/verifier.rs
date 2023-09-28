@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::iter;
 
 use ff::Field;
@@ -32,10 +33,10 @@ pub struct PartiallyEvaluated<C: CurveAffine> {
 }
 
 pub struct Evaluated<'params, C: CurveAffine> {
-    h_commitment: MSM<'params, C>,
-    random_poly_commitment: C,
-    expected_h_eval: C::Scalar,
-    random_eval: C::Scalar,
+    pub(crate) h_commitment: MSM<'params, C>,
+    pub(crate) random_poly_commitment: C,
+    pub(crate) expected_h_eval: C::Scalar,
+    pub(crate) random_eval: C::Scalar,
 }
 
 impl<C: CurveAffine> Argument<C> {

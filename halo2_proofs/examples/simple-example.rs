@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use group::ff::Field;
 use halo2_proofs::plonk::{
-    create_proof, keygen_pk, keygen_vk, minimal_verify_proof, MinimalSingleVerifier,
+    create_proof, keygen_pk, keygen_vk, minimal_verify_proof,
 };
 use halo2_proofs::poly::commitment::Params;
 use halo2_proofs::rescue_transcript::{RescueRead, RescueWrite};
@@ -302,9 +302,8 @@ fn main() {
         .expect("proof generation should not fail");
     let transcript_writer = transcript.finalize();
 
-    let new_strategy = MinimalSingleVerifier::new(&params);
     let mut transcript = RescueRead::<_>::init(transcript_writer.as_slice());
-    let verify = minimal_verify_proof(&params, pk.get_vk(), new_strategy, &[&[]], &mut transcript);
+    let verify = minimal_verify_proof(&params, pk.get_vk(), &[&[]], &mut transcript);
     verify.unwrap();
     // assert!(verify.is_ok());
 

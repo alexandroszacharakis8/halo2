@@ -470,7 +470,6 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
     /// Gets the quotient polynomial's degree (as a multiple of n)
     pub fn get_quotient_poly_degree(&self) -> usize {
-        println!("Quotient_poly_degree: {:?}", self.quotient_poly_degree);
         self.quotient_poly_degree as usize
     }
 

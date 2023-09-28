@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use group::ff::{Field, PrimeField};
 
 use std::iter;

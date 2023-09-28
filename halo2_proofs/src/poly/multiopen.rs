@@ -12,7 +12,7 @@ mod prover;
 mod verifier;
 
 pub use prover::{create_proof, create_proof_minimal};
-pub use verifier::{verify_proof, verify_proof_minimal, verify_proof_minimal_no_sets};
+pub use verifier::{verify_proof, verify_proof_minimal};
 
 #[derive(Clone, Copy, Debug)]
 struct X1 {}
@@ -57,7 +57,8 @@ pub struct VerifierQuery<'r, 'params: 'r, C: CurveAffine> {
     eval: C::Scalar,
 }
 
-/// A minimal polynomial query at a point
+/// A minimal polynomial query at a point. Instead of using a commitment
+/// reference, we directly use an affine point.
 #[derive(Debug, Clone)]
 pub struct MinimalVerifierQuery<C: CurveAffine> {
     /// Point at which poly is evaluated

@@ -18,7 +18,7 @@ use super::super::{ChallengeX, ChallengeY};
 use super::Argument;
 
 pub struct Committed<C: CurveAffine> {
-    random_poly_commitment: C,
+    pub random_poly_commitment: C,
 }
 
 pub struct Constructed<C: CurveAffine> {
@@ -29,7 +29,7 @@ pub struct Constructed<C: CurveAffine> {
 pub struct PartiallyEvaluated<C: CurveAffine> {
     h_commitments: Vec<C>,
     random_poly_commitment: C,
-    random_eval: C::Scalar,
+    pub(crate) random_eval: C::Scalar,
 }
 
 pub struct Evaluated<'params, C: CurveAffine> {

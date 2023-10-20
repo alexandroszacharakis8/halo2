@@ -2,7 +2,8 @@
 //! transcripts.
 
 use group::ff::{Field, FromUniformBytes, PrimeField};
-use midnight_circuits::{RescueParametersPallas, RescueSponge};
+use midnight_circuits::parameters::RescueParametersPallas;
+use midnight_circuits::primitives::crhf::RescueSponge;
 
 use crate::arithmetic::{Coordinates, CurveAffine};
 

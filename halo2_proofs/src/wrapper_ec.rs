@@ -25,7 +25,7 @@ pub fn scalar_inversion(scalar: &Scalar) -> Scalar {
 }
 
 pub fn scalar_product(scalars: &[Scalar]) -> Scalar {
-    scalars.into_iter().product()
+    scalars.iter().product()
 }
 
 pub fn scalar_pow(scalar: &Scalar, power: u64) -> Scalar {
@@ -35,8 +35,8 @@ pub fn scalar_pow(scalar: &Scalar, power: u64) -> Scalar {
 pub fn own_msm(scalars: &[Scalar], points: &[Affine]) -> Affine {
     let mut result = Affine::identity();
     scalars
-        .into_iter()
-        .zip(points.into_iter())
+        .iter()
+        .zip(points.iter())
         .for_each(|(scalar, point)| {
             result = (result + point.mul(scalar).to_affine()).to_affine();
         });

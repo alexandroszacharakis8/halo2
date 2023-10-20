@@ -203,7 +203,7 @@ pub fn verify_proof<
     // commitments open to the correct values.
     let vanishing = {
         // x^n
-        let xn = x.pow(&[params.n, 0, 0, 0]);
+        let xn = x.pow([params.n, 0, 0, 0]);
 
         let blinding_factors = vk.cs.blinding_factors();
         let l_evals = vk
@@ -272,8 +272,7 @@ pub fn verify_proof<
                                     fixed_evals,
                                     instance_evals,
                                 )
-                            })
-                            .into_iter(),
+                            }),
                     )
             });
 
@@ -318,8 +317,7 @@ pub fn verify_proof<
                     .chain(
                         lookups
                             .iter()
-                            .flat_map(move |p| p.queries(vk, x))
-                            .into_iter(),
+                            .flat_map(move |p| p.queries(vk, x)),
                     )
             },
         )

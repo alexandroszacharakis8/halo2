@@ -220,7 +220,7 @@ where
 }
 
 #[doc(hidden)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct PolynomialPointer<'a, C: CurveAffine> {
     poly: &'a Polynomial<C::Scalar, Coeff>,
     blind: commitment::Blind<C::Scalar>,

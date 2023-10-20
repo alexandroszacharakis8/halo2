@@ -69,19 +69,21 @@ pub struct MinimalVerifierQuery<C: CurveAffine> {
     pub(crate) eval: C::Scalar,
 }
 
-impl<C: CurveAffine> MinimalVerifierQuery<C> {
-    pub fn get_point(&self) -> C::Scalar {
+impl<C: CurveAffine> Query<C::Scalar> for MinimalVerifierQuery<C> {
+    type Commitment = C;
+    type Eval = C::Scalar;
+
+    fn get_point(&self) -> C::Scalar {
         self.point
     }
-
-    pub fn get_eval(&self) -> C::Scalar {
+    fn get_eval(&self) -> C::Scalar {
         self.eval
     }
-
-    pub fn get_commitment(&self) -> C {
+    fn get_commitment(&self) -> Self::Commitment {
         self.commitment
     }
 }
+
 
 impl<'r, 'params: 'r, C: CurveAffine> VerifierQuery<'r, 'params, C> {
     /// Create a new verifier query based on a commitment
@@ -109,7 +111,7 @@ impl<'r, 'params: 'r, C: CurveAffine> VerifierQuery<'r, 'params, C> {
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Debug)]
-enum CommitmentReference<'r, 'params: 'r, C: CurveAffine> {
+pub enum CommitmentReference<'r, 'params: 'r, C: CurveAffine> {
     Commitment(&'r C),
     MSM(&'r commitment::MSM<'params, C>),
 }
@@ -145,7 +147,7 @@ impl<F, T: PartialEq> CommitmentData<F, T> {
     }
 }
 
-trait Query<F>: Sized {
+pub trait Query<F>: Sized {
     type Commitment: PartialEq + Copy;
     type Eval: Clone + Default;
 

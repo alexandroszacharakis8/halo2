@@ -232,7 +232,7 @@ where
 /// set to `()` if no context is required.
 #[derive(Copy, Clone, Debug)]
 pub struct ChallengeScalar<C: CurveAffine, T> {
-    inner: C::Scalar,
+    pub(crate) inner: C::Scalar,
     _marker: PhantomData<T>,
 }
 

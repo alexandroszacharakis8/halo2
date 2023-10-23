@@ -52,7 +52,7 @@ rand_core = { version = "0.6", default-features = false }
 tracing = "0.1"
 blake2b_simd = "1"
 maybe-rayon = {version = "0.1.0", default-features = false}
-midnight-circuits = {git="ssh://git@github.com/input-output-hk/midnight-circuits.git"}
+midnight-circuits = {git="ssh://git@github.com/input-output-hk/midnight-circuits.git", rev="a17d9052f3214639404bc01aa03b523c064504d7"}
 
 # Developer tooling dependencies
 plotters = { version = "0.3.0", default-features = false, optional = true }

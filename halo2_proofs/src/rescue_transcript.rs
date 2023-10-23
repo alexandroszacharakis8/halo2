@@ -5,7 +5,7 @@ use group::ff::{Field, FromUniformBytes, PrimeField};
 use midnight_circuits::parameters::RescueParametersPallas;
 use midnight_circuits::primitives::crhf::RescueSponge;
 
-use crate::arithmetic::{Coordinates, CurveAffine};
+use crate::arithmetic::CurveAffine;
 
 use crate::transcript::{EncodedChallenge, Transcript, TranscriptRead, TranscriptWrite};
 use group::GroupEncoding;
@@ -15,17 +15,27 @@ use std::io::{self, Read, Write};
 /// RescueRead used for a rescue-based transcript
 #[derive(Debug, Clone)]
 pub struct RescueRead<R: Read> {
-    state: Vec<Fp>,
+    // the state is a rescue sponge
+    state: RescueSponge<Fp, RescueParametersPallas>,
     reader: R,
 }
 
 impl<R: Read> RescueRead<R> {
     /// Initialize a transcript given an input buffer.
     pub fn init(reader: R) -> Self {
+        // initialize state with (0,0,0,0)
+        let mut state = RescueSponge::new();
+
+        // we update the state by hashing "Halo2-Transcript"
         let mut u_repr = <Fp as PrimeField>::Repr::default();
         u_repr[..16].as_mut().copy_from_slice(b"Halo2-Transcript");
+        let msg = Fp::from_repr(u_repr).expect("blackbird");
+
+        // apply the hash to update the sponge
+        state.absorb([msg, Fp::ZERO, Fp::ZERO]);
         RescueRead {
-            state: vec![Fp::from_repr(u_repr).expect("blackbird")],
+            // initial state is Hash(Halo2-Transcript, 0, 0, 0)
+            state,
             reader,
         }
     }
@@ -60,32 +70,26 @@ impl<R: Read> TranscriptRead<EqAffine, Fp> for RescueRead<R> {
 
 impl<R: Read> Transcript<EqAffine, Fp> for RescueRead<R> {
     fn squeeze_challenge(&mut self) -> Fp {
-        self.state.extend_from_slice(&[Fp::ZERO]);
-        let hasher = self.state.clone();
-        let mut bytes = [0u8; 64];
-        bytes[..32].copy_from_slice(
-            &RescueSponge::<Fp, RescueParametersPallas>::hash(&hasher, Some(padding_fn)).to_repr(),
-        );
-        <Fp as EncodedChallenge<EqAffine>>::new(&bytes)
+        // absorb (0,0,0) to state for domain separation
+        self.state.absorb([Fp::ZERO, Fp::ZERO, Fp::ZERO]);
+        // squeeze the sponge to get the challenge 
+        self.state.squeeze()[0]
     }
 
     fn common_point(&mut self, point: EqAffine) -> io::Result<()> {
-        self.state.extend_from_slice(&[Fp::ONE]);
-        let coords: Coordinates<EqAffine> = Option::from(point.coordinates()).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "cannot write points at infinity to the transcript",
-            )
-        })?;
-        self.state.push(base_as_scalar(coords.x()));
-        self.state.push(base_as_scalar(coords.y()));
+        // TODO: fix error handling
+        let x = *point.coordinates().unwrap().x();
+        let y = *point.coordinates().unwrap().y();
+
+        // absorb (1, x, y) to the sponge
+        self.state.absorb([Fp::from(1), base_as_scalar(&x), base_as_scalar(&y)]);
 
         Ok(())
     }
 
     fn common_scalar(&mut self, scalar: Fp) -> io::Result<()> {
-        self.state.push(Fp::from(2));
-        self.state.push(scalar);
+        // absorb (2, 0, scalar) to the sponge
+        self.state.absorb([Fp::from(2), Fp::ZERO, scalar]);
 
         Ok(())
     }
@@ -94,17 +98,26 @@ impl<R: Read> Transcript<EqAffine, Fp> for RescueRead<R> {
 /// RescueWrite, used for a rescue-based transcript
 #[derive(Debug, Clone)]
 pub struct RescueWrite<W: Write> {
-    state: Vec<Fp>,
+    state: RescueSponge<Fp, RescueParametersPallas>,
     writer: W,
 }
 
 impl<W: Write> RescueWrite<W> {
     /// Initialize a transcript given an output buffer.
     pub fn init(writer: W) -> Self {
-        let mut scalar_bytes = [0u8; 32];
-        scalar_bytes[..16].copy_from_slice(b"Halo2-Transcript");
+        // initialize state with (0,0,0,0)
+        let mut state = RescueSponge::new();
+
+        // we update the state by hashing "Halo2-Transcript"
+        let mut u_repr = <Fp as PrimeField>::Repr::default();
+        u_repr[..16].as_mut().copy_from_slice(b"Halo2-Transcript");
+        let msg = Fp::from_repr(u_repr).expect("blackbird");
+
+        // apply the hash to update the sponge
+        state.absorb([msg, Fp::ZERO, Fp::ZERO]);
         RescueWrite {
-            state: vec![Fp::from_repr(scalar_bytes).expect("Meh")],
+            // initial state is Hash(Halo2-Transcript, 0, 0, 0)
+            state,
             writer,
         }
     }
@@ -131,28 +144,26 @@ impl<W: Write> TranscriptWrite<EqAffine, Fp> for RescueWrite<W> {
 
 impl<W: Write> Transcript<EqAffine, Fp> for RescueWrite<W> {
     fn squeeze_challenge(&mut self) -> Fp {
-        self.state.push(Fp::ZERO);
-        let hasher = self.state.clone();
-        RescueSponge::<Fp, RescueParametersPallas>::hash(&hasher, Some(padding_fn))
+        // absorb (0,0,0) to state for domain separation
+        self.state.absorb([Fp::ZERO, Fp::ZERO, Fp::ZERO]);
+        // squeeze the sponge to get the challenge 
+        self.state.squeeze()[0]
     }
 
     fn common_point(&mut self, point: EqAffine) -> io::Result<()> {
-        self.state.push(Fp::ONE);
-        let coords: Coordinates<EqAffine> = Option::from(point.coordinates()).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "cannot write points at infinity to the transcript",
-            )
-        })?;
-        self.state.push(base_as_scalar(coords.x()));
-        self.state.push(base_as_scalar(coords.y()));
+        // TODO: fix error handling
+        let x = *point.coordinates().unwrap().x();
+        let y = *point.coordinates().unwrap().y();
+
+        // absorb (1, x, y) to the sponge
+        self.state.absorb([Fp::from(1), base_as_scalar(&x), base_as_scalar(&y)]);
 
         Ok(())
     }
 
     fn common_scalar(&mut self, scalar: Fp) -> io::Result<()> {
-        self.state.push(Fp::from(2));
-        self.state.push(scalar);
+        // absorb (2, 0, scalar) to the sponge
+        self.state.absorb([Fp::from(2), Fp::ZERO, scalar]);
 
         Ok(())
     }
@@ -167,12 +178,6 @@ impl EncodedChallenge<EqAffine> for Fp {
     fn get_scalar(&self) -> Fp {
         *self
     }
-}
-
-fn padding_fn(input: &[Fp]) -> Vec<Fp> {
-    let mut out = vec![Fp::ZERO; (((input.len() - 1) / 3) + 1) * 3];
-    out[..input.len()].copy_from_slice(input);
-    out
 }
 
 // FIXME: don't release anything using this

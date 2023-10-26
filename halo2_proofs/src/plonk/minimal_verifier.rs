@@ -69,6 +69,7 @@ impl MinimalVerifierTranscript{
         transcript: &mut RescueRead<&[u8]>,
     ) -> Result<Self, Error> {
 
+        // hash operation
         vk.hash_into(transcript)?;
         let vk_repr = vk.transcript_repr;
 
@@ -92,6 +93,7 @@ impl MinimalVerifierTranscript{
 
         // permutation z commitments 
         let permutations_committed = vk.cs.permutation.read_product_commitments(vk, transcript)?;
+
         assert_eq!(permutations_committed.permutation_product_commitments.len(), 3);
         let permutation_z = [permutations_committed.permutation_product_commitments[0], permutations_committed.permutation_product_commitments[1], permutations_committed.permutation_product_commitments[2]];
 
@@ -247,53 +249,63 @@ pub fn minimal_verify_proof(
     // read transcript. This is a witnessed part when verifying in circuit
     let minimal_transcript = MinimalVerifierTranscript::parse_proof( params, vk, &mut transcript.clone())?;
 
+    // ======== HashOP: absorb vk_repr
     let _vk_repr = minimal_transcript.vk_repr;
 
+
     // read advice commitments (G1)
+    // ======== HashOP: absorb 
     let advice_commitments = minimal_transcript.advices_com.to_vec();
 
-    // TODO: Add hash assertion
+    // ======== HashOp: squeze 
     let _theta = minimal_transcript._theta;
-
-    // TODO: Add hash assertion
+    // ======== HashOp: squeze 
     let beta = minimal_transcript.beta;
-
-    // TODO: Add hash assertion
+    // ======== HashOp: squeze 
     let gamma = minimal_transcript.gamma;
 
     // read commitments to z polynomials (G1)
+    // ======== HashOP: absorb 
     let permutations_committed = minimal_transcript.permutation_z;
 
     // read the poly that blinds the vanishing polynomial (G1)
+    // ======== HashOP: absorb 
     let vanishing_rand = minimal_transcript.vanishing_blinder;
 
-
-    // TODO: Add hash assertion
+    // ======== HashOp: squeze 
     let y = minimal_transcript.y;
 
     // read the h polynomials (G1)
+    // ======== HashOP: absorb 
     let vanishing_split = minimal_transcript.vanishing_h;
 
-    // TODO: Add hash assertion
+    // ======== HashOp: squeze 
     let x = minimal_transcript.x;
 
     // We don't have instance evals
+    // ======== HashOp: absorb if instance cols are used 
     let _instance_evals: [Fp; 0] = [];
 
     // read advice and fixed evaluations (Fp)
+    // ======== HashOP: absorb 
     let advice_evals_at_x = minimal_transcript.advice_evals_at_x;
+    // ======== HashOP: absorb 
     let advice_evals_at_omegax = minimal_transcript.advice_evals_at_omegax;
+    // ======== HashOP: absorb 
     let fixed_evals_at_x = minimal_transcript.fixed_evals_at_x;
     
     // read blinder poly evaluation (Fp)
+    // ======== HashOP: absorb 
     let random_eval = minimal_transcript.vanishing_blinder_eval;
 
     // read permutation evaluations (Fp)
+    // ======== HashOP: absorb 
     let permutations_common_evals = minimal_transcript.permutation_s_evals; 
 
 
 
     // read z_poly evaluations (Fp)
+    // ======== HashOP: absorb 
     let permutations_evaluated_a = (
         permutations_committed[0],
         minimal_transcript.permutation_z0_evals[0],
@@ -317,6 +329,8 @@ pub fn minimal_verify_proof(
     let vanishing = {
         // x^n
         // n is fixed. This would be an in-circuit field operation (x -> x^n)
+        // First compute x^n
+        // ======== Fq op ==> x -> x^n (x^{2^k} k doublings? More efficient implementation?)
         let xn = x.pow([params.n, 0, 0, 0]);
 
         // This is a fixed number when the circuit is fixed
@@ -324,10 +338,16 @@ pub fn minimal_verify_proof(
 
         // evaluation of lg polynomials
         // this are in-circut Fp operation
-        // TODO: Look into the details of the computation
+        // evaluation of lg polynomials at   
+        //
+        // ======== Fq op ==> x, i -> lg_i(x)
+        //          We do this by asserting: yi (X-\omega_i) - ci(xn-1) = 0
+        //          Here, yi is the claimed evaluation and ci, omega_i fixed constants
         let l_evals = vk
             .domain
             .l_i_range(x, xn, (-((blinding_factors + 1) as i32))..=0);
+
+
         assert_eq!(l_evals.len(), 2 + blinding_factors);
         let l_last = l_evals[0];
         let l_blind: Fp = l_evals[1..(1 + blinding_factors)]
@@ -339,7 +359,6 @@ pub fn minimal_verify_proof(
         //   z_i(\omega X) \prod (p(X) + \beta s_i(X) + \gamma)
         // - z_i(X) \prod (p(X) + \delta^i \beta X + \gamma)
         // )
-        // These are in circut Fp operations
         let last_permutation_constraint = |col, col_eval, perm_eval, left: &mut Fp, delta_power: u64| {
             *left *= &(col + &(beta * col_eval) + &gamma);
 
@@ -354,6 +373,7 @@ pub fn minimal_verify_proof(
         };
 
 
+
         // Compute the expected value of h(x)
         let expressions = {
             let _instance_evals = &_instance_evals; // No instance values in our example
@@ -361,21 +381,25 @@ pub fn minimal_verify_proof(
             // We have only one gate, which we evaluate directly.
             // We have two evaluations of fixed columns, one for the fixed column (which we don't use
             // in the gate) and one for the selector (which we use here),
+            // ======== Fq op ==> gate correctness 
             iter::once(fixed_evals_at_x[1] * (advice_evals_at_x[0] * advice_evals_at_x[1] - advice_evals_at_omegax[0]))
                 // Now we work on the permutation argument
                 // Enforce only for the first set.
                 // l_0(X) * (1 - z_0(X)) = 0
                 // CP1 in notes
+                // ======== Fq op ==> permutation correctness 
                 .chain(iter::once(l_0 * &(Fp::ONE - &permutations_evaluated_a.1)))
                 // Next we enforce only for the last set.
                 // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
                 // CP2 in notes
+                // ======== Fq op ==> permutation correctness 
                 .chain(iter::once(
                     &l_last * &(permutations_evaluated_c.1.square() - &permutations_evaluated_c.1),
                 ))
                 // Except for the first set, enforce.
                 // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
                 // CP3 and CP4 in notes
+                // ======== Fq op ==> permutation correctness 
                 .chain(iter::once((permutations_evaluated_b.1 - permutations_evaluated_a.3) * &l_0))
                 .chain(iter::once((permutations_evaluated_c.1 - permutations_evaluated_b.3) * &l_0))
                 // And for all the sets we enforce:
@@ -388,6 +412,7 @@ pub fn minimal_verify_proof(
                 // 1. Fixed column CP7 in notes
                 // 2. Advice column CP5 in notes
                 // 3. Advice column CP6 in notes
+                // ======== Fq op ==> permutation correctness 
                 .chain(iter::once({
                     let mut left = permutations_evaluated_a.2;
                     last_permutation_constraint(fixed_evals_at_x[0], permutations_common_evals[0], permutations_evaluated_a.1, &mut left, 0)
@@ -404,12 +429,14 @@ pub fn minimal_verify_proof(
 
         // Now we compute the vanishing polynomial expected evaluation
         // These are in-circut field operations
+        // ======== Fq op ==> combine results using y to get h_poly_eval
         let expected_h_eval = expressions.fold(Fp::ZERO, |h_eval, v| h_eval * &y + &v);
         let expected_h_eval = expected_h_eval * ((xn - Fp::ONE).invert().unwrap());
 
         // and its commitment
         // In circut ECC operation
         // h_1*x^n + h_0
+        // ======== Fp op 
         let h_commitment = vanishing_split
             .iter()
             .rev()
@@ -424,17 +451,18 @@ pub fn minimal_verify_proof(
 
 
     let blinding_factors = vk.cs.blinding_factors();
-    // Fp op: x_next = omega * x for x witness and omega fixed
+    // ======== Fq op  x -> \omega x
     let x_next = vk.domain.rotate_omega(x, Rotation::next());
-    // Fp op: x_last = omega^u * x for x witness and omega^u fixed
+    // ======== Fq op  x -> \omega^u x
     let x_last = vk
         .domain
         .rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
 
+
     let advice_evals = [advice_evals_at_x[0], advice_evals_at_x[1], advice_evals_at_omegax[0]];
-    //
 
 
+    // this gathers the necessary queries to open the polycoms later on
     let queries = {
         iter::empty()
             .chain(vk.cs.advice_queries.iter().enumerate().map(
@@ -516,10 +544,10 @@ pub fn minimal_verify_proof(
             eval: random_eval,
         }));
 
-    // TODO: Add hash assertion
+    // ======== HashOP: squeeze 
     let x_1 = minimal_transcript.x_1;
 
-    // TODO: Add hash assertion
+    // ======== HashOP: squeeze 
     let x_2 = minimal_transcript.x_2;
 
     // First we create a mapping from point to it's index. This defines the ordering of the aggregate
@@ -543,6 +571,9 @@ pub fn minimal_verify_proof(
 
     // Now for each query we add the polynomial to its q aggregate polynomial (by multiplying always with a
     // different power of x_1), which is determined by it's evaluation point.
+    // Computes linear combination of commitments
+    // ======== Fp op:  \sum [q_i] x_1 ^ i
+    // ======== Fq op:  \sum [q_i_claimed_eval] x_1 ^ i
     for query in queries.clone() {
         let q_comm_index = point_index_map[&query.get_point()];
         let q_commitment = &mut q_commitments[q_comm_index];
@@ -553,12 +584,13 @@ pub fn minimal_verify_proof(
     }
 
     // read witness polynomial for aggregate opening
+    // ======== HashOP: absorb 
     let q_prime_commitment = minimal_transcript.f_com;
 
-    // TODO: Add hash assertion
+    // ======== HashOP: squeeze 
     let x_3 = minimal_transcript.x_3;
 
-    // read evals of the q polynomials
+    // ======== HashOP: absorb 
     let q_evals = minimal_transcript.q_evals;
 
     // We can compute the expected msm_eval at x_3 using the u provided
@@ -572,22 +604,27 @@ pub fn minimal_verify_proof(
             msm_eval * &(x_2) + &eval
         });
     
-    // TODO: Add hash assertion
+    // ======== HashOP: squeeze 
     let x_4 = minimal_transcript.x_4;
 
 
+
     // Compute P (the final commitment that has to be opened)
+    // ======== Fp op:  \sum [q_i] x_4 ^ i
     let p = (q_prime_commitment.mul(x_4*x_4*x_4) 
         + q_commitments[0].mul(x_4*x_4)
         + q_commitments[1].mul(x_4)
         + q_commitments[2]).to_affine();
 
+    // ======== Fq op:  \sum [q_i_claimed_eval] x_4 ^ i
     let v = msm_eval*x_4*x_4*x_4
         + q_evals[0]*x_4*x_4
         + q_evals[1]*x_4
         + q_evals[2];
 
 
+    // at this point we have our commitment
+    
     // IPA part
     let k = params.k as usize;
 
